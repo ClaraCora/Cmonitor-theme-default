@@ -3,7 +3,9 @@
 [Cmonitor](https://github.com/ClaraCora/Cmonitor) 的内置默认主题，基于
 [monitor-theme-default](https://github.com/monitor-probe/monitor-theme-default) 修改。
 
-主题使用 React、Vite 和 shadcn/ui，提供节点实时状态、TCPing 最新延迟、历史图表与彩色标签。
+主题使用 React、Vite 和 shadcn/ui，提供节点实时状态、TCPing 最近 20 次延迟与丢包状态、历史图表与彩色标签。
+
+TCPing 圆点按延迟着色：低于 100 ms 为绿色，100–199 ms 为黄色，达到 200 ms 或丢包为红色。
 
 ## 标签格式
 

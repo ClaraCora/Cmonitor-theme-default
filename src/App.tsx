@@ -96,6 +96,7 @@ export default function App() {
   // name. The site name rather than a fixed string, since the hub lets an operator
   // rename the site.
   useEffect(() => {
+    if (!me) return
     document.title = [selected?.name, me?.site_name || "Monitor"].filter(Boolean).join(" · ")
   }, [selected?.name, me?.site_name])
 

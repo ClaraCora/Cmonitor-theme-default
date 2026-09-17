@@ -41,7 +41,9 @@
      darkens as it fills. */
   --ok: oklch(0.62 0 0);
   --warn: oklch(0.44 0 0);
-  --latency: oklch(0.56 0.15 151);
+  --ping-good: oklch(0.60 0.16 150);
+  --ping-warn: oklch(0.72 0.16 85);
+  --ping-bad: oklch(0.60 0.20 25);
 }
 
 .dark {
@@ -71,7 +73,9 @@
   /* Inverted against the dark ground: the fuller the bar, the brighter. */
   --ok: oklch(0.62 0 0);
   --warn: oklch(0.79 0 0);
-  --latency: oklch(0.74 0.16 151);
+  --ping-good: oklch(0.72 0.16 150);
+  --ping-warn: oklch(0.80 0.16 85);
+  --ping-bad: oklch(0.70 0.19 25);
 }
 
 @theme inline {
@@ -104,7 +108,9 @@
   --color-chart-5: var(--chart-5);
   --color-ok: var(--ok);
   --color-warn: var(--warn);
-  --color-latency: var(--latency);
+  --color-ping-good: var(--ping-good);
+  --color-ping-warn: var(--ping-warn);
+  --color-ping-bad: var(--ping-bad);
 }
 
 @layer base {

@@ -90,6 +90,16 @@ function Latency({ node }: { node: Node }) {
   const pings = node.pings ?? []
   if (!pings.length) return null
   const answered = pings.filter((ping) => ping.latency !== null && ping.latency >= 0).length
+  const tone = (latency: number | null, kind: "bg" | "text") => {
+    if (latency === null) return kind === "bg" ? "bg-muted-foreground/25" : "text-muted-foreground"
+    const level = latency < 0 || latency >= 200 ? "bad" : latency >= 100 ? "warn" : "good"
+    const classes = {
+      good: { bg: "bg-ping-good", text: "text-ping-good" },
+      warn: { bg: "bg-ping-warn", text: "text-ping-warn" },
+      bad: { bg: "bg-ping-bad", text: "text-ping-bad" },
+    }
+    return classes[level][kind]
+  }
   return (
     <div className="mt-4 border-t pt-4 text-xs">
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -97,18 +107,30 @@ function Latency({ node }: { node: Node }) {
         <span className="tnum text-muted-foreground">{answered} / {pings.length}</span>
       </div>
       <div className="space-y-1.5">
-        {pings.map((ping) => (
-          <div key={ping.id} className="flex min-w-0 items-center">
-            <span className="max-w-[55%] truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
-            <span aria-hidden className="mx-2 min-w-4 grow border-b border-dotted" />
-            <span className={cn(
-              "tnum shrink-0 font-medium",
-              ping.latency === null ? "text-muted-foreground" : ping.latency < 0 ? "text-destructive" : "text-latency",
-            )}>
-              {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
-            </span>
-          </div>
-        ))}
+        {pings.map((ping) => {
+          const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
+          return (
+            <div key={ping.id} className="grid min-w-0 grid-cols-[minmax(0,5rem)_1fr_auto] items-center gap-x-2">
+              <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
+              <span aria-label={`最近 ${samples.length} 次探测`} className="flex min-w-0 justify-end gap-0.5 overflow-hidden">
+                {samples.map((sample, index) => (
+                  <span
+                    key={index}
+                    aria-hidden
+                    className={cn("size-1.5 shrink-0 rounded-full", tone(sample, "bg"))}
+                    title={sample < 0 ? "丢包" : `${sample} ms`}
+                  />
+                ))}
+              </span>
+              <span className={cn(
+                "tnum shrink-0 font-medium",
+                tone(ping.latency, "text"),
+              )}>
+                {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

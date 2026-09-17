@@ -27,6 +27,8 @@ export type LivePing = {
   /** Negative means timeout; null means this Hub session has not received a result yet. */
   latency: number | null
   updated_at: number | null
+  /** Up to 20 recent readings; a negative value is a lost probe. */
+  samples?: number[]
 }
 
 export type Node = {
