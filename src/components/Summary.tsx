@@ -68,13 +68,14 @@ export function Summary({ nodes }: { nodes: Node[] }) {
   const online = nodes.filter((n) => n.online)
   const sum = (pick: (n: Node) => number) => nodes.reduce((total, n) => total + pick(n), 0)
 
-  // The busiest node rather than the average: one machine at 95% is what matters,
-  // and a fleet of idle ones would average it away.
-  const busiest = online.reduce<Node | null>(
-    (top, n) => (n.metrics && (!top || n.metrics.cpu > top.metrics!.cpu) ? n : top),
-    null,
-  )
-  const cpu = busiest?.metrics?.cpu ?? 0
+  // Rank by combined live traffic so a node carrying most of the fleet's current
+  // work is visible even when that traffic is asymmetric.
+  const fastest = online.reduce<Node | null>((top, n) => {
+    if (!n.metrics) return top
+    if (!top || n.metrics.net_rx + n.metrics.net_tx > top.metrics!.net_rx + top.metrics!.net_tx) return n
+    return top
+  }, null)
+  const fastestRate = fastest?.metrics
   // The same push produced `nodes` and this sample, so the figure above the line
   // is that line's last point.
   const now = speedHistory.at(-1) ?? { rx: 0, tx: 0 }
@@ -90,10 +91,14 @@ export function Summary({ nodes }: { nodes: Node[] }) {
         </div>
       </Tile>
 
-      <Tile icon={Activity} label="最忙节点">
-        <div className="tnum mt-1 text-xl font-semibold">{busiest ? `${cpu.toFixed(1)}%` : "—"}</div>
-        <div className={cn("mt-auto truncate pt-1 text-xs", cpu >= 85 ? "font-medium text-foreground" : "text-muted-foreground")}>
-          {busiest ? busiest.name : "无在线节点"}
+      <Tile icon={Activity} label="速率最高节点">
+        {fastestRate ? (
+          <Flow down={rate(fastestRate.net_rx)} up={rate(fastestRate.net_tx)} className="mt-1 text-sm font-semibold" />
+        ) : (
+          <div className="tnum mt-1 text-xl font-semibold">—</div>
+        )}
+        <div className="mt-auto truncate pt-1 text-xs text-muted-foreground">
+          {fastest ? fastest.name : "无在线节点"}
         </div>
       </Tile>
 
