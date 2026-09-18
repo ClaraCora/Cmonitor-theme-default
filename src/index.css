@@ -18,7 +18,9 @@
      as the one accent, and Apple's five categorical hues for data. */
   --background: oklch(0.96 0.005 260);
   --foreground: oklch(0.21 0.01 260);
-  --card: oklch(1 0 0);
+  /* Frosted over the wallpaper: the card itself is translucent and the blur
+     lives on the Card component. Popovers stay opaque for readability. */
+  --card: oklch(1 0 0 / 72%);
   --card-foreground: oklch(0.21 0.01 260);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.21 0.01 260);
@@ -50,13 +52,18 @@
   --probe-3: oklch(0.72 0.18 149);
   --probe-4: oklch(0.63 0.24 12);
   --probe-5: oklch(0.79 0.11 225);
+  /* The four capacity meters, one hue each in the order they appear. */
+  --metric-cpu: oklch(0.60 0.18 285);
+  --metric-ram: oklch(0.63 0.20 8);
+  --metric-disk: oklch(0.73 0.16 65);
+  --metric-traffic: oklch(0.68 0.13 185);
 }
 
 .dark {
   /* iOS dark mode: near-black page, elevated grey cards, brighter system hues. */
   --background: oklch(0.155 0.005 260);
   --foreground: oklch(0.97 0.004 260);
-  --card: oklch(0.235 0.007 260);
+  --card: oklch(0.235 0.007 260 / 55%);
   --card-foreground: oklch(0.97 0.004 260);
   --popover: oklch(0.235 0.007 260);
   --popover-foreground: oklch(0.97 0.004 260);
@@ -87,6 +94,10 @@
   --probe-3: oklch(0.75 0.18 149);
   --probe-4: oklch(0.65 0.23 12);
   --probe-5: oklch(0.80 0.11 220);
+  --metric-cpu: oklch(0.70 0.16 285);
+  --metric-ram: oklch(0.70 0.18 10);
+  --metric-disk: oklch(0.78 0.15 70);
+  --metric-traffic: oklch(0.76 0.12 185);
 }
 
 @theme inline {
@@ -127,6 +138,10 @@
   --color-probe-3: var(--probe-3);
   --color-probe-4: var(--probe-4);
   --color-probe-5: var(--probe-5);
+  --color-metric-cpu: var(--metric-cpu);
+  --color-metric-ram: var(--metric-ram);
+  --color-metric-disk: var(--metric-disk);
+  --color-metric-traffic: var(--metric-traffic);
 }
 
 @layer base {
@@ -135,6 +150,16 @@
      whose content exceeds the fold widens the page. */
   html { scrollbar-gutter: stable; }
   body { @apply bg-background text-foreground; }
+  /* The wallpaper sits under everything; cards frost it rather than hide it. */
+  body {
+    background-image: url("/wallpaper-day.svg");
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+  }
+  .dark body {
+    background-image: url("/wallpaper-night.svg");
+  }
 }
 
 /* Tabular figures keep live numbers from shifting as they update. */
