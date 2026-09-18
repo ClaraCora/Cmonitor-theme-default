@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react"
-import { Moon, Sun } from "lucide-react"
+import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
 
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean }
+// `admin_url` is sent only to a signed-in caller, which is what lets the entry
+// exist here without the path ever reaching the public bundle.
+type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; admin_url?: string }
 
 // Split out because recharts is most of this bundle and the list page draws no
 // chart. The landing page is 242 kB rather than 629 kB (77 kB gzipped against
@@ -80,16 +82,11 @@ export default function App() {
   }, [loadMe])
 
   // The status page was closed while this tab was open. `me` holds whatever it
-  // reported at load, so it is re-queried; the effect below then directs an
-  // anonymous visitor to the panel rather than leaving them on a list that
-  // stopped updating with only a red line to explain it.
+  // reported at load, so it is re-queried and the closed notice below replaces
+  // the stale list.
   useEffect(() => {
     if (closed) void loadMe()
   }, [closed, loadMe])
-
-  useEffect(() => {
-    if (me && !me.public_page && !me.authed) location.href = "/clara/"
-  }, [me])
 
   // The status page is the public view for everyone: a node the panel hides
   // stays hidden even for a signed-in operator, whose complete list lives in
@@ -113,8 +110,16 @@ export default function App() {
     </div>
   )
 
-  // The status page is closed and nobody is signed in: redirect to the panel.
-  if (!me.public_page && !me.authed) return null
+  // The status page is closed and nobody is signed in. Fresh visits never get
+  // this far -- the hub redirects them to sign in -- but a tab open across the
+  // switch lands here as its polls start failing.
+  if (!me.public_page && !me.authed) {
+    return (
+      <div className="grid min-h-svh place-items-center p-6 text-sm text-muted-foreground">
+        状态页未公开
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-svh">
@@ -127,9 +132,15 @@ export default function App() {
             {me.site_name || "Monitor"}
           </button>
           <div className="flex-1" />
-          {/* No way into the panel from here: it lives at its own unlisted
-              path, and a closed status page sends anonymous visitors there
-              itself. */}
+          {/* The hub names the panel only to a signed-in caller, so the path
+              never appears in the bundle an anonymous visitor downloads. */}
+          {me.authed && me.admin_url && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href={me.admin_url}>
+                <Wrench /> 进入后台
+              </a>
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={toggleTheme} title="切换主题">
             {dark ? <Sun /> : <Moon />}
           </Button>
