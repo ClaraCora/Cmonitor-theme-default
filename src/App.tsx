@@ -119,17 +119,23 @@ export default function App() {
         <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. */}
-          <button className="font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
+          <button className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
+            <img src="/favicon.svg" alt="" className="size-5 rounded-md" />
             {me.site_name || "Monitor"}
           </button>
           <div className="flex-1" />
           {/* The panel is a separate app built into the hub, not part of this
-              theme, so this is a navigation rather than a route. */}
-          <Button variant="ghost" size="sm" asChild>
-            <a href="/admin/">
-              <Wrench /> {me.authed ? "进入后台" : "登录"}
-            </a>
-          </Button>
+              theme, so this is a navigation rather than a route. A closed
+              status page redirects anonymous visitors to the panel for sign-in
+              anyway, and offering the door on a page meant to look doorless
+              tells every passer-by there is one. */}
+          {me.public_page && (
+            <Button variant="ghost" size="sm" asChild>
+              <a href="/admin/">
+                <Wrench /> {me.authed ? "进入后台" : "登录"}
+              </a>
+            </Button>
+          )}
           <Button variant="ghost" size="icon" onClick={toggleTheme} title="切换主题">
             {dark ? <Sun /> : <Moon />}
           </Button>
