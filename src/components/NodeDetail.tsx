@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Country, Status } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import {
   axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks,
 } from "@/lib/format"
@@ -67,20 +68,124 @@ const SERIES = { dot: false as const, strokeWidth: 1.5, isAnimationActive: false
 // 28px, placing a CPU spike and the network spike that caused it at different x.
 const Y_WIDTH = 68
 
-// The palette is greyscale, so lightness alone is exhausted after two or three
-// series and the dash pattern carries the rest.
-// ponytail: the dash period is shorter than the jitter once every ping in the
-// window is on the chart, so at the day range a dotted line and a dashed one both
-// read as texture and only lightness separates them. A muted colour palette was
-// built and measured but not adopted; restoring it means five oklch pairs and
-// dropping `dash`.
+// One hue per probe, keyed by position so a line keeps its colour while other
+// probes are hidden. The resource panels stay on the greyscale `--chart-*`.
 const PALETTE = [
-  { stroke: "var(--color-chart-1)", dash: undefined },
-  { stroke: "var(--color-chart-3)", dash: "6 3" },
-  { stroke: "var(--color-chart-2)", dash: "2 3" },
-  { stroke: "var(--color-chart-4)", dash: "10 4 2 4" },
-  { stroke: "var(--color-chart-5)", dash: "1 4" },
+  { stroke: "var(--color-probe-1)" },
+  { stroke: "var(--color-probe-2)" },
+  { stroke: "var(--color-probe-3)" },
+  { stroke: "var(--color-probe-4)" },
+  { stroke: "var(--color-probe-5)" },
 ]
+
+// The red the node cards already use for a lost probe, so loss reads the same
+// on both pages.
+const LOSS_RED = "var(--color-ping-bad)"
+
+/** One tooltip look for every panel on the page. */
+const TIP_STYLE = {
+  fontSize: 12,
+  borderRadius: 8,
+  border: "1px solid var(--color-border)",
+  background: "var(--color-popover)",
+  color: "var(--color-popover-foreground)",
+  boxShadow: "0 4px 12px rgb(0 0 0 / 0.15)",
+} as const
+
+/**
+ * The dot for a bucket that answered some of its probes and lost the rest: a
+ * ring in the loss red. The line itself only draws what answered, so without
+ * the ring a bucket that dropped half its packets reads as a healthy point.
+ */
+function LossDot({ cx, cy, payload, index, lossKey, rawKey }: {
+  cx?: number
+  cy?: number
+  payload?: Record<string, number | null>
+  index?: number
+  lossKey: string
+  rawKey: string
+}) {
+  const partial = Number(payload?.[lossKey] ?? 0) > 0 && payload?.[rawKey] != null
+  return partial && cx !== undefined && cy !== undefined ? (
+    <circle key={index} cx={cx} cy={cy} r={3.5} fill="none" stroke={LOSS_RED} strokeWidth={1.5} />
+  ) : (
+    <g key={index} />
+  )
+}
+
+type TipEntry = {
+  dataKey?: string | number
+  name?: unknown
+  value?: unknown
+  payload?: Record<string, number | null>
+}
+
+/**
+ * The latency chart's tooltip. Rows are read off the hovered bucket rather
+ * than off the tooltip payload, because the payload omits a series whose value
+ * is null -- which is exactly the series that lost everything, the one row
+ * that must say so. The figure is the line's own value -- despiked when that
+ * is switched on -- while the loss beside it is always the bucket's raw
+ * percentage: smoothing must not smooth an outage away.
+ */
+function PingTip({ active, payload, label, swatch, probes, smooth }: {
+  active?: boolean
+  payload?: TipEntry[]
+  label?: unknown
+  swatch: (id: number) => { stroke: string }
+  probes: { id: number; name: string }[]
+  smooth: boolean
+}) {
+  const row = payload?.[0]?.payload
+  if (!active || !row) return null
+  const entries = probes
+    .map((probe) => {
+      const raw = row[`t${probe.id}`]
+      const loss = Number(row[`l${probe.id}`] ?? 0)
+      // No reading and no loss is a gap between a slower probe's buckets, not
+      // an outage, and says nothing worth a row.
+      if ((raw === null || raw === undefined) && loss === 0) return null
+      return { ...probe, raw, value: smooth ? row[`s${probe.id}`] : raw, loss }
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null)
+  if (!active || !entries.length) return null
+  return (
+    <div className="rounded-md border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md">
+      <div className="mb-1 text-muted-foreground">{new Date(Number(label)).toLocaleString("zh-CN")}</div>
+      <div className="space-y-0.5">
+        {entries.map((e) => (
+          <div key={e.id} className="flex items-center gap-1.5">
+            <span className="size-2 shrink-0 rounded-[3px]" style={{ background: swatch(e.id).stroke }} />
+            <span className="max-w-36 truncate text-muted-foreground">{e.name}</span>
+            {e.raw === null || e.raw === undefined ? (
+              <span className="tnum ml-auto pl-4 font-medium text-ping-bad">全部丢失</span>
+            ) : (
+              <span className="tnum ml-auto pl-4">
+                {Number(e.value ?? e.raw)} ms
+                {e.loss > 0 && <span className="text-ping-bad">{` · 丢 ${e.loss}%`}</span>}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** The probes currently drawn, in their own colours, anchored beneath the chart. */
+function Legend({ probes, swatch }: { probes: { id: number; name: string }[]; swatch: (id: number) => { stroke: string } }) {
+  if (!probes.length) return null
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      {probes.map((p) => (
+        <span key={p.id} className="inline-flex items-center gap-1.5">
+          <span className="size-2 shrink-0 rounded-[3px]" style={{ background: swatch(p.id).stroke }} />
+          {p.name}
+        </span>
+      ))}
+    </div>
+  )
+}
 
 const TABS = [
   { key: "resources", label: "资源" },
@@ -101,7 +206,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
     <button
       onClick={onClick}
       className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-        active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
+        active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
@@ -211,18 +316,31 @@ export function NodeDetail({ node }: { node: Node }) {
   const pingSeries = useMemo(
     () =>
       [...new Set((data?.ping ?? []).map((p) => p.task_id))]
-        .map((id) => {
+        .map((id, index) => {
           // Timeouts are retained: dropping them would draw a probe losing half
           // its packets as an unbroken line, and one that never answered not at
           // all.
           const points = (data?.ping ?? []).filter((p) => p.task_id === id)
+          // Card statistics from the buckets themselves: the mean of every
+          // bucket that answered at all.
+          const answered = points.map((p) => p.latency).filter((v): v is number => v !== null)
+          const avg = answered.length ? Math.round(answered.reduce((sum, v) => sum + v, 0) / answered.length) : null
+          // The mean step between one answered bucket and the next -- how
+          // nervous the line is beneath wherever it happens to sit.
+          const jitter =
+            answered.length > 1
+              ? answered.slice(1).reduce((sum, v, i) => sum + Math.abs(v - answered[i]), 0) / (answered.length - 1)
+              : null
           // Taken from the hub rather than summed from the buckets above, each of
           // which is already a percentage of its own bucket, so averaging them
           // would report one lost round in thirteen as 50%. Left unrounded, since
           // `Math.round` would render 0.28% and 0.00% as the same badge, and the
           // absence of a badge denotes no loss.
           const loss = data?.loss?.[id] ?? 0
-          return { id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss }
+          // Height of this probe's full-loss dots on the hidden floor axis,
+          // staggered so two probes' outages do not draw over each other.
+          const floor = 0.05 + index * 0.12
+          return { id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss, avg, jitter, floor }
         })
         .filter((s) => s.points.length > 0),
     [data],
@@ -280,6 +398,9 @@ export function NodeDetail({ node }: { node: Node }) {
         row[`t${s.id}`] = p.latency
         row[`s${s.id}`] = smoothed[i].latency
         row[`l${s.id}`] = p.loss ?? 0
+        // The full-loss marker on the hidden floor axis: a height only where
+        // nothing answered, null anywhere else so no dot is drawn.
+        row[`x${s.id}`] = p.latency === null ? s.floor : null
         // Raw, never despiked: the band exists to show what the line omits, and
         // smoothing it would omit the same points.
         row[`b${s.id}`] = p.band ?? null
@@ -351,7 +472,7 @@ export function NodeDetail({ node }: { node: Node }) {
       )}
 
       <div className="space-y-2 border-t pt-4">
-        <div className="flex gap-1">
+        <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
           {TABS.map((t) => (
             <Tab key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
               {t.label}
@@ -359,7 +480,7 @@ export function NodeDetail({ node }: { node: Node }) {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <div className="flex gap-1">
+          <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
             {RANGES_FOR[tab].map((r) => (
               <Tab
                 key={r.hours}
@@ -371,15 +492,20 @@ export function NodeDetail({ node }: { node: Node }) {
             ))}
           </div>
           {tab === "latency" && (
-            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                checked={smooth}
-                onChange={(e) => setSmooth(e.target.checked)}
-                className="accent-foreground"
-              />
-              削峰
-            </label>
+            <div className="ml-auto flex items-center gap-3">
+              <button
+                onClick={() => setHiddenProbes([])}
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                全选
+              </button>
+              <button
+                onClick={() => setHiddenProbes(pingSeries.map((s) => s.id))}
+                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
+              >
+                全不选
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -392,24 +518,88 @@ export function NodeDetail({ node }: { node: Node }) {
         pingSeries.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有延迟数据</p>
         ) : (
-          // An explicit pixel height on the column, so the chart can be `flex-1`
-          // within it while the legend takes what it needs: four probes are one row
-          // of chips on a desktop and two on a phone, so any fixed reservation is
-          // wrong on one of them.
-          <div
-            // `+ scrollY`, because getBoundingClientRect is measured from the
-            // viewport and this callback runs on every render; a live node
-            // re-renders every two seconds, so a scrolled page would re-derive the
-            // height from a top that has moved.
-            ref={(el) => {
-              if (el) setChartTop(el.getBoundingClientRect().top + scrollY)
-            }}
-            style={
-              chartTop
-                ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` }
-                : undefined
-            }
-            className="flex min-h-72 flex-col gap-3">
+          <>
+            {/* One card per probe: its colour, name, and the window's three
+                answers -- mean latency, loss rate, jitter. The loss figure is
+                the hub's own, since bucket percentages cannot be averaged back
+                into it. Clicking toggles the line, so a slow probe can be
+                dropped to let the fast ones rescale the axis. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+              {pingSeries.map((s) => {
+                const shown = !hiddenProbes.includes(s.id)
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() =>
+                      setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
+                    }
+                    title={shown ? "点击隐藏这条曲线" : "点击显示这条曲线"}
+                    className={cn(
+                      "min-w-0 rounded-lg bg-muted/60 px-3 py-2 text-left transition-opacity",
+                      !shown && "opacity-40",
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: style(s.id).stroke }} />
+                      <span className="truncate text-sm font-medium">{s.name}</span>
+                    </span>
+                    <span
+                      className="tnum mt-1 block truncate text-xs text-muted-foreground"
+                      title="窗口平均延迟 · 丢包率 · 平均波动"
+                    >
+                      {s.avg === null ? "—" : `${s.avg} ms`}
+                      {" · "}
+                      <span className={s.loss > 0 ? "font-medium text-ping-bad" : undefined}>
+                        {s.loss.toFixed(2)}%
+                      </span>
+                      {" · "}
+                      {s.jitter === null ? "—" : s.jitter < 10 ? s.jitter.toFixed(2) : s.jitter < 100 ? s.jitter.toFixed(1) : Math.round(s.jitter)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {/* An explicit pixel height on the panel, so the chart can be
+                `flex-1` within it and still end above the fold's bottom edge.
+                `+ scrollY`, because getBoundingClientRect is measured from the
+                viewport and this callback runs on every render; a live node
+                re-renders every two seconds, so a scrolled page would re-derive
+                the height from a top that has moved. */}
+            <div
+              ref={(el) => {
+                if (el) setChartTop(el.getBoundingClientRect().top + scrollY)
+              }}
+              style={
+                chartTop
+                  ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` }
+                  : undefined
+              }
+              className="flex min-h-72 flex-col gap-2 rounded-xl bg-muted/40 p-3 sm:p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">延迟 (ms)</span>
+                <button
+                  role="switch"
+                  aria-checked={smooth}
+                  onClick={() => setSmooth((v) => !v)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  平滑峰值
+                  <span
+                    className={cn(
+                      "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
+                      smooth ? "bg-foreground" : "bg-muted-foreground/30",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "absolute size-3 rounded-full bg-background transition-transform",
+                        smooth ? "translate-x-3.5" : "translate-x-0.5",
+                      )}
+                    />
+                  </span>
+                </button>
+              </div>
             {/* `min-h-0` is what makes `flex-1` a real number rather than the
                 content's own height: ResponsiveContainer reads its parent, and
                 a flex child not told it may shrink reports whatever the SVG
@@ -431,18 +621,14 @@ export function NodeDetail({ node }: { node: Node }) {
                     />
                     {/* Not anchored at zero: these lines live in a narrow band
                         far from it, and zero flattens every wobble. */}
-                    <YAxis unit="ms" width={52} domain={["auto", "auto"]} {...AXIS} />
-                    <Tooltip
-                      labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
-                      // The line is drawn from what answered, so without this a
-                      // bucket that lost most of its packets reads as normal.
-                      // `dataKey` is `t7`/`s7`; the loss sits at `l7`.
-                      formatter={(v, name, item) => {
-                        const loss = Number(item?.payload?.[`l${String(item.dataKey).slice(1)}`] ?? 0)
-                        return [`${Number(v)} ms${loss > 0 ? ` · 丢 ${loss}%` : ""}`, name]
-                      }}
-                      contentStyle={{ fontSize: 12 }}
-                    />
+                    <YAxis width={44} domain={["auto", "auto"]} {...AXIS} />
+                    {/* Readings that never came back are dotted along this floor
+                        rather than left as gaps: `connectNulls` bridges an outage,
+                        and a bridged outage reads as a healthy stretch without the
+                        row of dots beneath it. Each probe has its own height here,
+                        so two outages do not draw over each other. */}
+                    <YAxis yAxisId="loss" hide domain={[0, 1]} />
+                    <Tooltip content={<PingTip swatch={style} probes={shownProbes} smooth={smooth} />} />
                     {/* Behind the line, the range that bucket's answers
                         spanned -- Smokeping's "smoke". At the day window a
                         bucket moves 63 ms at the 90th percentile against the
@@ -468,22 +654,37 @@ export function NodeDetail({ node }: { node: Node }) {
                       ))}
                     {shownProbes.map((s) => (
                       <Line
+                        key={`loss${s.id}`}
+                        yAxisId="loss"
+                        dataKey={`x${s.id}`}
+                        stroke="none"
+                        connectNulls={false}
+                        dot={{ r: 3, fill: LOSS_RED, strokeWidth: 0 }}
+                        activeDot={false}
+                        isAnimationActive={false}
+                        legendType="none"
+                        tooltipType="none"
+                      />
+                    ))}
+                    {shownProbes.map((s) => (
+                      <Line
                         key={s.id}
                         dataKey={`${smooth ? "s" : "t"}${s.id}`}
                         name={s.name}
                         stroke={style(s.id).stroke}
-                        strokeDasharray={style(s.id).dash}
-                        {...SERIES}
+                        strokeWidth={1.5}
+                        isAnimationActive={false}
                         connectNulls
+                        dot={(props) => <LossDot {...props} lossKey={`l${s.id}`} rawKey={`t${s.id}`} />}
                       />
                     ))}
                     {/* Drag either handle to zoom into a stretch of the trend. */}
                     <Brush
                       dataKey="ts"
-                      height={22}
+                      height={18}
                       travellerWidth={8}
                       tickFormatter={clockFor(hours)}
-                      className="fill-muted"
+                      fill="var(--color-muted)"
                       stroke="var(--color-muted-foreground)"
                       onChange={(r) => setZoom([r.startIndex ?? 0, r.endIndex ?? pingRows.length - 1])}
                     />
@@ -491,51 +692,9 @@ export function NodeDetail({ node }: { node: Node }) {
                 </ResponsiveContainer>
               )}
             </div>
-
-            {/* Under the chart: what it covers is picked at the top, what is
-                drawn in it is picked here. Recharts paints the brush into the
-                same SVG as the axis, so this is as close beneath as HTML
-                sits. */}
-            {(pingSeries.length > 1 || pingSeries.some((s) => s.loss > 0)) && (
-            <div className="flex flex-wrap items-center justify-center gap-1.5">
-              {pingSeries.map((s) => {
-                const shown = !hiddenProbes.includes(s.id)
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() =>
-                      setHiddenProbes((h) => (shown ? [...h, s.id] : h.filter((id) => id !== s.id)))
-                    }
-                    className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-opacity ${
-                      shown ? "" : "opacity-40"
-                    }`}
-                  >
-                    {/* The swatch carries the same shade and dash as the line. */}
-                    <svg width="14" height="6" className="shrink-0" aria-hidden>
-                      <line
-                        x1="0"
-                        y1="3"
-                        x2="14"
-                        y2="3"
-                        stroke={style(s.id).stroke}
-                        strokeDasharray={style(s.id).dash}
-                        strokeWidth="2"
-                      />
-                    </svg>
-                    {s.name}
-                    {/* The line is only what answered, so a probe dropping
-                        half its packets draws like a healthy one. */}
-                    {s.loss > 0 && (
-                      <span className="tabular-nums opacity-60">
-                        丢 {s.loss < 1 ? "<1" : Math.round(s.loss)}%
-                      </span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            )}
+            <Legend probes={shownProbes} swatch={style} />
           </div>
+          </>
         )
       ) : data.metrics.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有历史数据</p>
@@ -550,7 +709,7 @@ export function NodeDetail({ node }: { node: Node }) {
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => [`${Number(v).toFixed(1)}%`, "CPU"]}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={TIP_STYLE}
                 />
                 <Area dataKey="cpu" stroke="var(--color-chart-1)" fill="var(--color-chart-1)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>
@@ -571,7 +730,7 @@ export function NodeDetail({ node }: { node: Node }) {
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={TIP_STYLE}
                 />
                 <Area dataKey="mem_used" name="内存" stroke="var(--color-chart-2)" fill="var(--color-chart-2)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>
@@ -589,7 +748,7 @@ export function NodeDetail({ node }: { node: Node }) {
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => rate(Number(v))}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={TIP_STYLE}
                 />
                 <Line dataKey="net_rx" name="下行" stroke="var(--color-ok)" {...SERIES} />
                 <Line dataKey="net_tx" name="上行" stroke="var(--color-chart-1)" {...SERIES} />
@@ -609,7 +768,7 @@ export function NodeDetail({ node }: { node: Node }) {
                 <Tooltip
                   labelFormatter={(ts) => new Date(Number(ts)).toLocaleString("zh-CN")}
                   formatter={(v) => bytes(Number(v))}
-                  contentStyle={{ fontSize: 12 }}
+                  contentStyle={TIP_STYLE}
                 />
                 <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-2)" fill="var(--color-chart-2)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>

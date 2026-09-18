@@ -44,6 +44,13 @@
   --ping-good: oklch(0.60 0.16 150);
   --ping-warn: oklch(0.72 0.16 85);
   --ping-bad: oklch(0.60 0.20 25);
+  /* One hue per latency probe, distinct from the greyscale `--chart-*` that
+     the resource panels keep. */
+  --probe-1: oklch(0.55 0.19 255);
+  --probe-2: oklch(0.62 0.19 45);
+  --probe-3: oklch(0.60 0.15 160);
+  --probe-4: oklch(0.62 0.19 350);
+  --probe-5: oklch(0.68 0.15 75);
 }
 
 .dark {
@@ -76,6 +83,11 @@
   --ping-good: oklch(0.72 0.16 150);
   --ping-warn: oklch(0.80 0.16 85);
   --ping-bad: oklch(0.70 0.19 25);
+  --probe-1: oklch(0.72 0.15 255);
+  --probe-2: oklch(0.74 0.15 50);
+  --probe-3: oklch(0.74 0.13 160);
+  --probe-4: oklch(0.74 0.15 350);
+  --probe-5: oklch(0.78 0.14 75);
 }
 
 @theme inline {
@@ -111,6 +123,11 @@
   --color-ping-good: var(--ping-good);
   --color-ping-warn: var(--ping-warn);
   --color-ping-bad: var(--ping-bad);
+  --color-probe-1: var(--probe-1);
+  --color-probe-2: var(--probe-2);
+  --color-probe-3: var(--probe-3);
+  --color-probe-4: var(--probe-4);
+  --color-probe-5: var(--probe-5);
 }
 
 @layer base {
