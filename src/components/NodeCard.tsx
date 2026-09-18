@@ -109,6 +109,11 @@ function Latency({ node }: { node: Node }) {
       <div className="space-y-1.5">
         {pings.map((ping) => {
           const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
+          // A rate needs the window it is taken over; the single dot an older
+          // hub falls back to is not one. The detail page's convention holds
+          // here too: no figure means nothing was lost.
+          const recent = ping.samples ?? []
+          const lost = recent.filter((sample) => sample < 0).length
           return (
             <div key={ping.id} className="grid min-w-0 grid-cols-[minmax(0,5rem)_1fr_auto] items-center gap-x-2">
               <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
@@ -127,6 +132,14 @@ function Latency({ node }: { node: Node }) {
                 tone(ping.latency, "text"),
               )}>
                 {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
+                {lost > 0 && (
+                  <span
+                    className="font-normal text-muted-foreground"
+                    title={`最近 ${recent.length} 次探测丢包 ${lost} 次`}
+                  >
+                    {` · 丢 ${Math.round((100 * lost) / recent.length)}%`}
+                  </span>
+                )}
               </span>
             </div>
           )
