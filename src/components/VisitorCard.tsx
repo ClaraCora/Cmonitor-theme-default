@@ -86,10 +86,7 @@ export function VisitorCard() {
             <X className="size-4" />
           </button>
         </div>
-        <p className="mt-2.5 border-b border-white/10 pb-2.5 text-sm">
-          欢迎来自{visitor.city || country || "远方"}的你！
-        </p>
-        <ul className="mt-2.5 space-y-2 text-xs text-slate-300">
+        <ul className="mt-2.5 space-y-2 border-t border-white/10 pt-2.5 text-xs text-slate-300">
           {rows.map(({ icon: Icon, text }, i) => (
             <li key={i} className="flex items-center gap-2">
               <Icon className="size-3.5 shrink-0 text-slate-400" />

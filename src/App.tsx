@@ -10,7 +10,7 @@ import { api, useNodes, type Node } from "@/lib/api"
 
 // `admin_url` is sent only to a signed-in caller, which is what lets the entry
 // exist here without the path ever reaching the public bundle.
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; admin_url?: string }
+type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; admin_url?: string; visitor_card?: boolean }
 
 // Split out because recharts is most of this bundle and the list page draws no
 // chart. The landing page is 242 kB rather than 629 kB (77 kB gzipped against
@@ -185,7 +185,7 @@ export default function App() {
         )}
       </main>
       {/* The greeting belongs to the list: a node page is read, not visited. */}
-      {open === null && <VisitorCard />}
+      {open === null && me.visitor_card !== false && <VisitorCard />}
     </div>
   )
 }
