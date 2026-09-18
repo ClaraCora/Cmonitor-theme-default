@@ -3,6 +3,7 @@ import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
+import { VisitorCard } from "@/components/VisitorCard"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
@@ -183,6 +184,8 @@ export default function App() {
           </>
         )}
       </main>
+      {/* The greeting belongs to the list: a node page is read, not visited. */}
+      {open === null && <VisitorCard />}
     </div>
   )
 }
