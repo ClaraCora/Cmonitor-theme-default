@@ -2,7 +2,7 @@
   "name": "Cmonitor 默认主题",
   "short": "default",
   "description": "内置状态面板，显示实时指标、TCPing 与彩色标签",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "author": "ClaraCora",
   "url": "https://github.com/ClaraCora/Cmonitor-theme-default"
 }

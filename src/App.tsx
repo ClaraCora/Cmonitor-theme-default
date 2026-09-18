@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react"
-import { Moon, Sun, Wrench } from "lucide-react"
+import { Moon, Sun } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
@@ -88,10 +88,13 @@ export default function App() {
   }, [closed, loadMe])
 
   useEffect(() => {
-    if (me && !me.public_page && !me.authed) location.href = "/admin/"
+    if (me && !me.public_page && !me.authed) location.href = "/clara/"
   }, [me])
 
-  const sorted = [...(nodes ?? [])].sort((a, b) => a.sort - b.sort || a.id - b.id)
+  // The status page is the public view for everyone: a node the panel hides
+  // stays hidden even for a signed-in operator, whose complete list lives in
+  // the panel rather than here.
+  const sorted = [...(nodes ?? [])].filter((n) => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id)
   const selected = sorted.find((n) => n.id === open)
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
@@ -124,18 +127,9 @@ export default function App() {
             {me.site_name || "Monitor"}
           </button>
           <div className="flex-1" />
-          {/* The panel is a separate app built into the hub, not part of this
-              theme, so this is a navigation rather than a route. A closed
-              status page redirects anonymous visitors to the panel for sign-in
-              anyway, and offering the door on a page meant to look doorless
-              tells every passer-by there is one. */}
-          {me.public_page && (
-            <Button variant="ghost" size="sm" asChild>
-              <a href="/admin/">
-                <Wrench /> {me.authed ? "进入后台" : "登录"}
-              </a>
-            </Button>
-          )}
+          {/* No way into the panel from here: it lives at its own unlisted
+              path, and a closed status page sends anonymous visitors there
+              itself. */}
           <Button variant="ghost" size="icon" onClick={toggleTheme} title="切换主题">
             {dark ? <Sun /> : <Moon />}
           </Button>
