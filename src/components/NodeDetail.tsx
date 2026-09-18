@@ -206,7 +206,7 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
     <button
       onClick={onClick}
       className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-        active ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+        active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {children}
@@ -253,7 +253,11 @@ function Fact({ label, value }: { label: string; value?: string | number | null 
 }
 
 export function NodeDetail({ node }: { node: Node }) {
-  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resources")
+  // A link into this page can name its tab: the TCPing block on a node card
+  // opens the latency view directly rather than the default resources one.
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>(() =>
+    new URLSearchParams(location.search).get("tab") === "latency" ? "latency" : "resources",
+  )
   // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
   // different questions.
   const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
@@ -535,7 +539,7 @@ export function NodeDetail({ node }: { node: Node }) {
                     }
                     title={shown ? "点击隐藏这条曲线" : "点击显示这条曲线"}
                     className={cn(
-                      "min-w-0 rounded-lg bg-muted/60 px-3 py-2 text-left transition-opacity",
+                      "min-w-0 rounded-lg bg-card px-3 py-2 text-left shadow-sm transition-opacity",
                       !shown && "opacity-40",
                     )}
                   >
@@ -574,7 +578,7 @@ export function NodeDetail({ node }: { node: Node }) {
                   ? { height: `calc(100svh - ${Math.round(chartTop)}px - 1rem)` }
                   : undefined
               }
-              className="flex min-h-72 flex-col gap-2 rounded-xl bg-muted/40 p-3 sm:p-4"
+              className="flex min-h-72 flex-col gap-2 rounded-xl bg-card p-3 shadow-sm sm:p-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs text-muted-foreground">延迟 (ms)</span>
@@ -588,7 +592,7 @@ export function NodeDetail({ node }: { node: Node }) {
                   <span
                     className={cn(
                       "relative inline-flex h-4 w-7 items-center rounded-full transition-colors",
-                      smooth ? "bg-foreground" : "bg-muted-foreground/30",
+                      smooth ? "bg-ping-good" : "bg-muted-foreground/30",
                     )}
                   >
                     <span
@@ -770,7 +774,7 @@ export function NodeDetail({ node }: { node: Node }) {
                   formatter={(v) => bytes(Number(v))}
                   contentStyle={TIP_STYLE}
                 />
-                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-2)" fill="var(--color-chart-2)" fillOpacity={0.15} {...SERIES} />
+                <Area dataKey="disk_used" name="硬盘" stroke="var(--color-chart-3)" fill="var(--color-chart-3)" fillOpacity={0.15} {...SERIES} />
               </AreaChart>
             </ResponsiveContainer>
           </Panel>

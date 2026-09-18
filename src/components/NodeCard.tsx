@@ -49,7 +49,7 @@ export function Status({ node }: { node: Node }) {
       variant="outline"
       className={cn("tnum shrink-0 gap-1.5 font-normal", !node.online && "text-muted-foreground")}
     >
-      <span className={cn("size-1.5 rounded-full", node.online ? "bg-foreground" : "bg-muted-foreground/40")} />
+      <span className={cn("size-1.5 rounded-full", node.online ? "bg-ping-good" : "bg-muted-foreground/40")} />
       {label.trim()}
     </Badge>
   )
@@ -86,7 +86,7 @@ function Expiry({ node }: { node: Node }) {
   )
 }
 
-function Latency({ node }: { node: Node }) {
+function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => void }) {
   const pings = node.pings ?? []
   if (!pings.length) return null
   const answered = pings.filter((ping) => ping.latency !== null && ping.latency >= 0).length
@@ -101,7 +101,25 @@ function Latency({ node }: { node: Node }) {
     return classes[level][kind]
   }
   return (
-    <div className="mt-4 border-t pt-4 text-xs">
+    // Its own target within the card: here opens the node's latency chart,
+    // anywhere else opens the node's resources. The stopPropagation pair
+    // keeps the two apart, keyboard included.
+    <div
+      role="button"
+      tabIndex={0}
+      title="查看网络延迟"
+      onClick={(e) => {
+        e.stopPropagation()
+        onOpenLatency()
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" && e.key !== " ") return
+        e.preventDefault()
+        e.stopPropagation()
+        onOpenLatency()
+      }}
+      className="-mx-2 mt-4 cursor-pointer rounded-b-lg border-t px-2 pt-4 text-xs transition-colors hover:bg-muted/60"
+    >
       <div className="mb-2 flex items-center justify-between gap-3">
         <span className="font-medium">TCPing</span>
         <span className="tnum text-muted-foreground">{answered} / {pings.length}</span>
@@ -163,7 +181,7 @@ function Tags({ node }: { node: Node }) {
   )
 }
 
-export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
+export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: () => void; onOpenLatency: () => void }) {
   const m = node.metrics
 
   return (
@@ -254,7 +272,7 @@ export function NodeCard({ node, onOpen }: { node: Node; onOpen: () => void }) {
           还没有接入。在后台生成安装命令并执行一次。
         </p>
       )}
-      <Latency node={node} />
+      <Latency node={node} onOpenLatency={onOpenLatency} />
       <Tags node={node} />
     </Card>
   )

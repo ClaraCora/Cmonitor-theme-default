@@ -13,81 +13,80 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.18 0 0);
+  --radius: 0.75rem;
+  /* iOS grouped-list look: a light grey page under white cards, system blue
+     as the one accent, and Apple's five categorical hues for data. */
+  --background: oklch(0.96 0.005 260);
+  --foreground: oklch(0.21 0.01 260);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0 0);
+  --card-foreground: oklch(0.21 0.01 260);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0 0);
-  --primary: oklch(0.18 0 0);
+  --popover-foreground: oklch(0.21 0.01 260);
+  --primary: oklch(0.59 0.21 258);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0 0);
-  --secondary-foreground: oklch(0.18 0 0);
-  --muted: oklch(0.955 0 0);
-  --muted-foreground: oklch(0.52 0 0);
-  --accent: oklch(0.955 0 0);
-  --accent-foreground: oklch(0.18 0 0);
-  --destructive: oklch(0.3 0 0);
-  --border: oklch(0.9 0 0);
-  --input: oklch(0.9 0 0);
-  --ring: oklch(0.62 0 0);
-  --chart-1: oklch(0.3 0 0);
-  --chart-2: oklch(0.45 0 0);
-  --chart-3: oklch(0.58 0 0);
-  --chart-4: oklch(0.7 0 0);
-  --chart-5: oklch(0.82 0 0);
-  /* Greyscale has no red or amber, so severity is carried by weight: the bar
-     darkens as it fills. */
-  --ok: oklch(0.62 0 0);
-  --warn: oklch(0.44 0 0);
-  --ping-good: oklch(0.60 0.16 150);
-  --ping-warn: oklch(0.72 0.16 85);
-  --ping-bad: oklch(0.60 0.20 25);
-  /* One hue per latency probe, distinct from the greyscale `--chart-*` that
-     the resource panels keep. */
-  --probe-1: oklch(0.55 0.19 255);
-  --probe-2: oklch(0.62 0.19 45);
-  --probe-3: oklch(0.60 0.15 160);
-  --probe-4: oklch(0.62 0.19 350);
-  --probe-5: oklch(0.68 0.15 75);
+  --secondary: oklch(0.93 0.005 260);
+  --secondary-foreground: oklch(0.21 0.01 260);
+  --muted: oklch(0.945 0.005 260);
+  --muted-foreground: oklch(0.57 0.015 260);
+  --accent: oklch(0.93 0.005 260);
+  --accent-foreground: oklch(0.21 0.01 260);
+  --destructive: oklch(0.62 0.23 27);
+  --border: oklch(0.885 0.008 260);
+  --input: oklch(0.885 0.008 260);
+  --ring: oklch(0.62 0.19 258);
+  --chart-1: oklch(0.59 0.21 258);
+  --chart-2: oklch(0.72 0.18 149);
+  --chart-3: oklch(0.75 0.17 70);
+  --chart-4: oklch(0.63 0.24 12);
+  --chart-5: oklch(0.79 0.11 225);
+  --ok: oklch(0.72 0.18 149);
+  --warn: oklch(0.75 0.17 70);
+  --ping-good: oklch(0.72 0.18 149);
+  --ping-warn: oklch(0.75 0.17 70);
+  --ping-bad: oklch(0.62 0.23 27);
+  /* One hue per latency probe, in the same Apple order as `--chart-*`. */
+  --probe-1: oklch(0.59 0.21 258);
+  --probe-2: oklch(0.75 0.17 70);
+  --probe-3: oklch(0.72 0.18 149);
+  --probe-4: oklch(0.63 0.24 12);
+  --probe-5: oklch(0.79 0.11 225);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.98 0 0);
-  --card: oklch(0.2 0 0);
-  --card-foreground: oklch(0.98 0 0);
-  --popover: oklch(0.2 0 0);
-  --popover-foreground: oklch(0.98 0 0);
-  --primary: oklch(0.92 0 0);
-  --primary-foreground: oklch(0.2 0 0);
-  --secondary: oklch(0.27 0 0);
-  --secondary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.27 0 0);
-  --muted-foreground: oklch(0.7 0 0);
-  --accent: oklch(0.27 0 0);
-  --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.95 0 0);
-  --border: oklch(1 0 0 / 12%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0 0);
-  --chart-1: oklch(0.95 0 0);
-  --chart-2: oklch(0.82 0 0);
-  --chart-3: oklch(0.68 0 0);
-  --chart-4: oklch(0.54 0 0);
-  --chart-5: oklch(0.42 0 0);
-  /* Inverted against the dark ground: the fuller the bar, the brighter. */
-  --ok: oklch(0.62 0 0);
-  --warn: oklch(0.79 0 0);
-  --ping-good: oklch(0.72 0.16 150);
-  --ping-warn: oklch(0.80 0.16 85);
-  --ping-bad: oklch(0.70 0.19 25);
-  --probe-1: oklch(0.72 0.15 255);
-  --probe-2: oklch(0.74 0.15 50);
-  --probe-3: oklch(0.74 0.13 160);
-  --probe-4: oklch(0.74 0.15 350);
-  --probe-5: oklch(0.78 0.14 75);
+  /* iOS dark mode: near-black page, elevated grey cards, brighter system hues. */
+  --background: oklch(0.155 0.005 260);
+  --foreground: oklch(0.97 0.004 260);
+  --card: oklch(0.235 0.007 260);
+  --card-foreground: oklch(0.97 0.004 260);
+  --popover: oklch(0.235 0.007 260);
+  --popover-foreground: oklch(0.97 0.004 260);
+  --primary: oklch(0.64 0.20 256);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.29 0.008 260);
+  --secondary-foreground: oklch(0.97 0.004 260);
+  --muted: oklch(0.27 0.007 260);
+  --muted-foreground: oklch(0.67 0.012 260);
+  --accent: oklch(0.29 0.008 260);
+  --accent-foreground: oklch(0.97 0.004 260);
+  --destructive: oklch(0.66 0.22 26);
+  --border: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.64 0.20 256);
+  --chart-1: oklch(0.64 0.20 256);
+  --chart-2: oklch(0.75 0.18 149);
+  --chart-3: oklch(0.77 0.16 72);
+  --chart-4: oklch(0.65 0.23 12);
+  --chart-5: oklch(0.80 0.11 220);
+  --ok: oklch(0.75 0.18 149);
+  --warn: oklch(0.77 0.16 72);
+  --ping-good: oklch(0.75 0.18 149);
+  --ping-warn: oklch(0.77 0.16 72);
+  --ping-bad: oklch(0.66 0.22 26);
+  --probe-1: oklch(0.64 0.20 256);
+  --probe-2: oklch(0.77 0.16 72);
+  --probe-3: oklch(0.75 0.18 149);
+  --probe-4: oklch(0.65 0.23 12);
+  --probe-5: oklch(0.80 0.11 220);
 }
 
 @theme inline {

@@ -31,8 +31,10 @@ function useNodeRoute() {
   }, [])
   return [
     id,
-    (next: number | null) => {
-      history.pushState({}, "", next === null ? "/" : `/node/${next}`)
+    // The tab is a query rather than part of the path: it names which view of
+    // the node a link opens, and the detail page reads it once on mount.
+    (next: number | null, tab?: "latency") => {
+      history.pushState({}, "", next === null ? "/" : `/node/${next}${tab === "latency" ? "?tab=latency" : ""}`)
       setId(next)
       scrollTo(0, 0)
     },
@@ -163,7 +165,7 @@ export default function App() {
             ) : (
               <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {sorted.map((n: Node) => (
-                  <NodeCard key={n.id} node={n} onOpen={() => go(n.id)} />
+                  <NodeCard key={n.id} node={n} onOpen={() => go(n.id)} onOpenLatency={() => go(n.id, "latency")} />
                 ))}
               </div>
             )}
