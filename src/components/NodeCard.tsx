@@ -1,10 +1,10 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowDown, ArrowUp, CalendarDays, Cpu, Globe, HardDrive, MemoryStick } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
-import type { Node } from "@/lib/api"
+import { api, type Node } from "@/lib/api"
 import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, uptime } from "@/lib/format"
 import { flagPath, osIconPath } from "@/lib/icons"
 import { parseTags } from "@/lib/tags"
@@ -110,14 +110,77 @@ function Expiry({ node }: { node: Node }) {
   )
 }
 
+/** One probe round, already thinned by the hub: the bucket's median trip and
+ * the share of it that timed out. */
+type PingBucket = { task_id: number; ts: number; latency: number | null; loss?: number }
+
+// Twenty samples is a shallow window: at a one-minute interval it covers
+// twenty minutes, and a storm half an hour ago is already gone. The detail
+// endpoint answers the same buckets it draws from, so each card asks once for
+// its node's recent history and shares the answer across re-renders. The
+// fetch is per mount rather than per frame, and refused answers are cached
+// too, so a busy hub is not asked again for ninety seconds.
+const HISTORY_TTL = 90_000
+const pingHistoryCache = new Map<number, { at: number; data: { ping: PingBucket[]; loss?: Record<string, number> } | null }>()
+
+function usePingHistory(nodeId: number) {
+  const [hist, setHist] = useState<{ ping: PingBucket[]; loss?: Record<string, number> } | null>(() => {
+    const cached = pingHistoryCache.get(nodeId)
+    return cached && Date.now() - cached.at < HISTORY_TTL ? cached.data : null
+  })
+  useEffect(() => {
+    const cached = pingHistoryCache.get(nodeId)
+    if (cached && Date.now() - cached.at < HISTORY_TTL) {
+      // oxlint-disable-next-line react/set-state-in-effect
+      setHist(cached.data)
+      return
+    }
+    let active = true
+    api<{ ping: PingBucket[]; loss?: Record<string, number> }>(`/nodes/${nodeId}/metrics?hours=2&points=40&series=ping`)
+      .then((d) => {
+        pingHistoryCache.set(nodeId, { at: Date.now(), data: d })
+        if (active) setHist(d)
+      })
+      .catch(() => {
+        pingHistoryCache.set(nodeId, { at: Date.now(), data: null })
+        if (active) setHist(null)
+      })
+    return () => {
+      active = false
+    }
+  }, [nodeId])
+  return hist
+}
+
+/** One bar in a probe strip: a height-coloured trip, with the bucket's lost
+ * share as a red segment on the baseline. */
+function PingBar({ latency, loss, title }: { latency: number | null; loss: number; title: string }) {
+  if (latency === null) {
+    return <span className="h-[22%] min-w-[2px] flex-1 rounded-[2px] bg-ping-bad" title={title} />
+  }
+  const level = latency >= 200 ? "bad" : latency >= 100 ? "warn" : "good"
+  return (
+    <span className="flex h-full min-w-[2px] flex-1 flex-col justify-end" title={title}>
+      <span
+        className={cn("rounded-[2px]", { good: "bg-ping-good", warn: "bg-ping-warn", bad: "bg-ping-bad" }[level])}
+        style={{ height: `${30 + Math.min(70, (latency / 250) * 70)}%` }}
+      />
+      {loss > 0 && <span className="rounded-b-[2px] bg-ping-bad" style={{ height: `${Math.min(100, loss)}%` }} />}
+    </span>
+  )
+}
+
+const clock = (ts: number) =>
+  new Date(ts * 1000).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
+
 function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => void }) {
   const pings = node.pings ?? []
+  const hist = usePingHistory(node.id)
   if (!pings.length) return null
   const answered = pings.filter((ping) => ping.latency !== null && ping.latency >= 0).length
-  const level = (latency: number) => (latency < 0 || latency >= 200 ? "bad" : latency >= 100 ? "warn" : "good")
   const text = (latency: number | null) => {
     if (latency === null) return "text-muted-foreground"
-    return { good: "text-ping-good", warn: "text-ping-warn", bad: "text-ping-bad" }[level(latency)]
+    return latency < 0 || latency >= 200 ? "text-ping-bad" : latency >= 100 ? "text-ping-warn" : "text-ping-good"
   }
   return (
     // Its own target within the card: here opens the node's latency chart,
@@ -145,15 +208,32 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
       </div>
       <div className="space-y-2">
         {pings.map((ping) => {
+          const buckets = hist?.ping.filter((b) => b.task_id === ping.id) ?? null
+          const fromHistory = !!buckets?.length
+          // Live samples are the fallback while history loads, and for a hub
+          // too old to answer the endpoint at all.
           const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
-          // The window's statistics, not just its tail: mean over what
-          // answered, and the share that did not.
-          const ok = samples.filter((s) => s >= 0)
-          const avg = ok.length ? Math.round(ok.reduce((sum, s) => sum + s, 0) / ok.length) : null
-          // The rate needs the window it is taken over: only the hub's own
-          // samples, never the single-sample fallback for an older hub.
-          const recent = ping.samples ?? []
-          const lost = recent.filter((s) => s < 0).length
+          const ok = (fromHistory ? buckets.map((b) => b.latency) : samples).filter((v): v is number => v !== null && v >= 0)
+          const avg = ok.length > 1 ? Math.round(ok.reduce((sum, v) => sum + v, 0) / ok.length) : null
+          // The rate needs the window it is taken over. History's figure comes
+          // from the raw samples inside the window; the live one from the hub's
+          // own 20-sample window, never from the single-sample fallback.
+          const lost = (ping.samples ?? []).filter((s) => s < 0).length
+          const lossPct = fromHistory
+            ? (hist?.loss?.[ping.id] ?? 0)
+            : lost > 0 ? (100 * lost) / (ping.samples?.length || 1) : 0
+          const bars = fromHistory
+            ? buckets.map((b, i) => (
+                <PingBar
+                  key={i}
+                  latency={b.latency}
+                  loss={b.loss ?? 0}
+                  title={`${clock(b.ts)} · ${b.latency === null ? "全部丢失" : `${b.latency} ms`}${(b.loss ?? 0) > 0 && b.latency !== null ? ` · 丢 ${b.loss}%` : ""}`}
+                />
+              ))
+            : samples.map((s, i) => (
+                <PingBar key={i} latency={s < 0 ? null : s} loss={s < 0 ? 100 : 0} title={s < 0 ? "丢包" : `${s} ms`} />
+              ))
           return (
             <div key={ping.id} className="min-w-0">
               <div className="flex items-baseline justify-between gap-2">
@@ -162,38 +242,18 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
                   <span className={text(ping.latency)}>
                     {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
                   </span>
-                  {avg !== null && samples.length > 1 && (
+                  {avg !== null && (
                     <span className="font-normal text-muted-foreground">{` · 均 ${avg} ms`}</span>
                   )}
-                  {lost > 0 && (
-                    <span className="font-normal text-ping-bad" title={`最近 ${recent.length} 次探测丢包 ${lost} 次`}>
-                      {` · 丢 ${Math.round((100 * lost) / recent.length)}%`}
+                  {lossPct > 0 && (
+                    <span className="font-normal text-ping-bad">
+                      {` · 丢 ${lossPct < 1 ? "<1" : Math.round(lossPct)}%`}
                     </span>
                   )}
                 </span>
               </div>
-              {/* A bar per probe round: height and colour follow the round trip,
-                  a lost one collapses to a red notch on the baseline. */}
-              <div aria-label={`最近 ${samples.length} 次探测`} className="mt-1 flex h-3.5 items-end gap-[2px]">
-                {samples.map((sample, index) =>
-                  sample < 0 ? (
-                    <span
-                      key={index}
-                      className="h-[22%] min-w-[2px] flex-1 rounded-[2px] bg-ping-bad"
-                      title="丢包"
-                    />
-                  ) : (
-                    <span
-                      key={index}
-                      className={cn(
-                        "min-w-[2px] flex-1 rounded-[2px]",
-                        { good: "bg-ping-good", warn: "bg-ping-warn", bad: "bg-ping-bad" }[level(sample)],
-                      )}
-                      style={{ height: `${30 + Math.min(70, (sample / 250) * 70)}%` }}
-                      title={`${sample} ms`}
-                    />
-                  ),
-                )}
+              <div aria-label={fromHistory ? "最近 2 小时探测" : `最近 ${samples.length} 次探测`} className="mt-1 flex h-3.5 items-end gap-px">
+                {bars}
               </div>
             </div>
           )
