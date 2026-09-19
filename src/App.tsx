@@ -4,6 +4,7 @@ import { Moon, Sun, Wrench } from "lucide-react"
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
 import { VisitorCard } from "@/components/VisitorCard"
+import { flagPath } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
@@ -56,12 +57,44 @@ function useTheme() {
   return [dark, () => setDark((d) => !d)] as const
 }
 
+/** Country chips with counts, between the summary and the grid: one tap
+ * filters the fleet to a region, another clears it. */
+function RegionBar({ nodes, region, onPick }: { nodes: Node[]; region: string | null; onPick: (c: string | null) => void }) {
+  const counts = new Map<string, number>()
+  for (const n of nodes) if (n.country) counts.set(n.country, (counts.get(n.country) ?? 0) + 1)
+  if (counts.size < 2) return null
+  const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const chip = (active: boolean) =>
+    `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+      active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+    }`
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card p-2 shadow-sm backdrop-blur-md">
+      <button onClick={() => onPick(null)} className={chip(!region)}>
+        全部 <span className="tnum">{nodes.length}</span>
+      </button>
+      {entries.map(([cc, n]) => (
+        <button key={cc} onClick={() => onPick(region === cc ? null : cc)} className={chip(region === cc)} title={cc}>
+          <img
+            src={flagPath(cc)}
+            alt={cc}
+            loading="lazy"
+            className="h-3 w-[18px] rounded-[2px] object-cover ring-1 ring-black/10"
+          />
+          {cc} <span className="tnum">{n}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const [dark, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
   const [meError, setMeError] = useState("")
   const { nodes, error, closed } = useNodes()
   const [open, go] = useNodeRoute()
+  const [region, setRegion] = useState<string | null>(null)
 
   const loadMe = useCallback(() => {
     // `|| "..."` because an empty message reads as no error: api() falls back to
@@ -94,6 +127,7 @@ export default function App() {
   // the panel rather than here.
   const sorted = [...(nodes ?? [])].filter((n) => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id)
   const selected = sorted.find((n) => n.id === open)
+  const shown = region ? sorted.filter((n) => n.country === region) : sorted
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
   // name. The site name rather than a fixed string, since the hub lets an operator
@@ -172,11 +206,12 @@ export default function App() {
         ) : (
           <>
             <Summary nodes={sorted} />
+            <RegionBar nodes={sorted} region={region} onPick={setRegion} />
             {sorted.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
             ) : (
               <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {sorted.map((n: Node) => (
+                {shown.map((n: Node) => (
                   <NodeCard key={n.id} node={n} onOpen={() => go(n.id)} onOpenLatency={() => go(n.id, "latency")} />
                 ))}
               </div>

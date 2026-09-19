@@ -1,10 +1,12 @@
-import { ArrowDown, ArrowUp } from "lucide-react"
+import { useState } from "react"
+import { ArrowDown, ArrowUp, CalendarDays, Cpu, Globe, HardDrive, MemoryStick } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
 import type { Node } from "@/lib/api"
-import { bytes, daysUntil, FOREVER, osName, pair, percent, rate, uptime } from "@/lib/format"
+import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, uptime } from "@/lib/format"
+import { flagPath, osIconPath } from "@/lib/icons"
 import { parseTags } from "@/lib/tags"
 import { cn } from "@/lib/utils"
 
@@ -55,9 +57,23 @@ export function Status({ node }: { node: Node }) {
   )
 }
 
-/** Where the machine is, in the same shape as the badge next to it. */
+/** Where the machine is: a flag when the pack knows the code, the code itself
+ * when it does not. */
 export function Country({ node }: { node: Node }) {
+  const [failed, setFailed] = useState(false)
   if (!node.country) return null
+  if (!failed) {
+    return (
+      <img
+        src={flagPath(node.country)}
+        alt={node.country}
+        title={node.country}
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="h-4 w-6 shrink-0 rounded-[3px] object-cover ring-1 ring-black/10"
+      />
+    )
+  }
   return (
     <Badge variant="outline" className="shrink-0 font-normal text-muted-foreground">
       {node.country}
@@ -77,10 +93,18 @@ function trafficFoot(node: Node) {
 // blank corner asserts neither.
 function Expiry({ node }: { node: Node }) {
   const days = daysUntil(node.expires_at)
-  if (days === null) return <span className="text-xs text-muted-foreground" title="永不到期">{FOREVER}</span>
+  if (days === null) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="永不到期">
+        <CalendarDays className="size-3" />
+        {FOREVER}
+      </span>
+    )
+  }
   const tone = days < 0 ? "text-destructive" : days <= 7 ? "text-warn" : "text-muted-foreground"
   return (
-    <span className={cn("tnum text-xs", tone)}>
+    <span className={cn("tnum inline-flex items-center gap-1 text-xs", tone)}>
+      <CalendarDays className="size-3" />
       {days < 0 ? `已过期 ${-days} 天` : `${days} 天后到期`}
     </span>
   )
@@ -202,17 +226,17 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
             <h3 className="truncate font-medium">{node.name}</h3>
             <Country node={node} />
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {node.os ? osName(node.os) : "等待首次上报"}
+          <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+            {node.os && osIconPath(node.os) && (
+              <img src={osIconPath(node.os)!} alt="" loading="lazy" className="size-4 shrink-0" />
+            )}
+            <span className="truncate">{node.os ? osName(node.os) : "等待首次上报"}</span>
             {node.virt && node.virt !== "none" ? ` · ${node.virt}` : ""}
             {node.arch ? ` · ${node.arch}` : ""}
           </p>
         </div>
         {/* State right, identity left, one line each. */}
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Status node={node} />
-          <Expiry node={node} />
-        </div>
+        <Status node={node} />
       </div>
 
       {/* One layout for both states: a disconnected node still knows its
@@ -228,18 +252,21 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
               pct={m ? m.cpu : null}
               foot={m ? m.load.map((n) => n.toFixed(2)).join(" ") : "—"}
               tone="var(--color-metric-cpu)"
+              icon={<Cpu className="size-3.5 shrink-0" />}
             />
             <Meter
               label="内存"
               pct={m ? percent(m.mem_used, m.mem_total) : null}
               foot={m ? pair(m.mem_used, m.mem_total) : bytes(node.mem_total)}
               tone="var(--color-metric-ram)"
+              icon={<MemoryStick className="size-3.5 shrink-0" />}
             />
             <Meter
               label="硬盘"
               pct={m ? percent(m.disk_used, m.disk_total) : null}
               foot={m ? pair(m.disk_used, m.disk_total) : bytes(node.disk_total)}
               tone="var(--color-metric-disk)"
+              icon={<HardDrive className="size-3.5 shrink-0" />}
             />
             <Meter
               label="流量"
@@ -247,26 +274,32 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
               empty={FOREVER}
               foot={trafficFoot(node)}
               tone="var(--color-metric-traffic)"
+              icon={<Globe className="size-3.5 shrink-0" />}
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 border-t pt-4 text-xs">
-            <span className="tnum inline-flex items-center gap-1.5">
-              <ArrowDown className="size-3 text-muted-foreground" />
-              {m ? rate(m.net_rx) : "—"}
-            </span>
-            <span className="tnum inline-flex items-center gap-1.5">
-              <ArrowUp className="size-3 text-muted-foreground" />
-              {m ? rate(m.net_tx) : "—"}
-            </span>
-            <span className="tnum inline-flex items-center gap-1.5 text-muted-foreground">
-              <ArrowDown className="size-3" />
-              {bytes(node.total_rx)}
-            </span>
-            <span className="tnum inline-flex items-center gap-1.5 text-muted-foreground">
-              <ArrowUp className="size-3" />
-              {bytes(node.total_tx)}
-            </span>
+          {/* Throughput gets the colour: green out, orange in, totals muted. */}
+          <div className="mt-4 space-y-1.5 border-t pt-3.5 text-xs">
+            <div className="flex items-center justify-between gap-4">
+              <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <ArrowUp className="size-3.5 shrink-0 text-ping-good" />
+                上行
+                <span className="tnum truncate text-sm font-semibold text-ping-good">
+                  {m ? rate(m.net_tx) : "—"}
+                </span>
+              </span>
+              <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                <ArrowDown className="size-3.5 shrink-0 text-metric-disk" />
+                下行
+                <span className="tnum truncate text-sm font-semibold text-metric-disk">
+                  {m ? rate(m.net_rx) : "—"}
+                </span>
+              </span>
+            </div>
+            <div className="tnum flex items-center justify-between gap-4 text-muted-foreground">
+              <span>出站 {bytes(node.total_tx)}</span>
+              <span>入站 {bytes(node.total_rx)}</span>
+            </div>
           </div>
         </>
       ) : (
@@ -277,6 +310,17 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
         </p>
       )}
       <Latency node={node} onOpenLatency={onOpenLatency} />
+      {/* The plan in its own terms, left; the renewal date, right. */}
+      <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+        <span>
+          {node.price > 0 && (
+            <Badge variant="outline" className="tnum font-normal text-ping-good">
+              {money(node.price, node.currency)} / {CYCLES[node.billing_cycle] ?? node.billing_cycle}
+            </Badge>
+          )}
+        </span>
+        <Expiry node={node} />
+      </div>
       <Tags node={node} />
     </Card>
   )
