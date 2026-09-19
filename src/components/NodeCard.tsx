@@ -114,15 +114,10 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
   const pings = node.pings ?? []
   if (!pings.length) return null
   const answered = pings.filter((ping) => ping.latency !== null && ping.latency >= 0).length
-  const tone = (latency: number | null, kind: "bg" | "text") => {
-    if (latency === null) return kind === "bg" ? "bg-muted-foreground/25" : "text-muted-foreground"
-    const level = latency < 0 || latency >= 200 ? "bad" : latency >= 100 ? "warn" : "good"
-    const classes = {
-      good: { bg: "bg-ping-good", text: "text-ping-good" },
-      warn: { bg: "bg-ping-warn", text: "text-ping-warn" },
-      bad: { bg: "bg-ping-bad", text: "text-ping-bad" },
-    }
-    return classes[level][kind]
+  const level = (latency: number) => (latency < 0 || latency >= 200 ? "bad" : latency >= 100 ? "warn" : "good")
+  const text = (latency: number | null) => {
+    if (latency === null) return "text-muted-foreground"
+    return { good: "text-ping-good", warn: "text-ping-warn", bad: "text-ping-bad" }[level(latency)]
   }
   return (
     // Its own target within the card: here opens the node's latency chart,
@@ -148,41 +143,58 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
         <span className="font-medium">TCPing</span>
         <span className="tnum text-muted-foreground">{answered} / {pings.length}</span>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {pings.map((ping) => {
           const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
-          // A rate needs the window it is taken over; the single dot an older
-          // hub falls back to is not one. The detail page's convention holds
-          // here too: no figure means nothing was lost.
+          // The window's statistics, not just its tail: mean over what
+          // answered, and the share that did not.
+          const ok = samples.filter((s) => s >= 0)
+          const avg = ok.length ? Math.round(ok.reduce((sum, s) => sum + s, 0) / ok.length) : null
+          // The rate needs the window it is taken over: only the hub's own
+          // samples, never the single-sample fallback for an older hub.
           const recent = ping.samples ?? []
-          const lost = recent.filter((sample) => sample < 0).length
+          const lost = recent.filter((s) => s < 0).length
           return (
-            <div key={ping.id} className="grid min-w-0 grid-cols-[minmax(0,5rem)_1fr_auto] items-center gap-x-2">
-              <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
-              <span aria-label={`最近 ${samples.length} 次探测`} className="flex min-w-0 justify-end gap-0.5 overflow-hidden">
-                {samples.map((sample, index) => (
-                  <span
-                    key={index}
-                    aria-hidden
-                    className={cn("size-1.5 shrink-0 rounded-full", tone(sample, "bg"))}
-                    title={sample < 0 ? "丢包" : `${sample} ms`}
-                  />
-                ))}
-              </span>
-              <span className={cn(
-                "tnum shrink-0 font-medium",
-                tone(ping.latency, "text"),
-              )}>
-                {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
-                {lost > 0 && (
-                  <span
-                    className="font-normal text-muted-foreground"
-                    title={`最近 ${recent.length} 次探测丢包 ${lost} 次`}
-                  >
-                    {` · 丢 ${Math.round((100 * lost) / recent.length)}%`}
+            <div key={ping.id} className="min-w-0">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
+                <span className="tnum shrink-0 font-medium">
+                  <span className={text(ping.latency)}>
+                    {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
                   </span>
+                  {avg !== null && samples.length > 1 && (
+                    <span className="font-normal text-muted-foreground">{` · 均 ${avg} ms`}</span>
+                  )}
+                  {lost > 0 && (
+                    <span className="font-normal text-ping-bad" title={`最近 ${recent.length} 次探测丢包 ${lost} 次`}>
+                      {` · 丢 ${Math.round((100 * lost) / recent.length)}%`}
+                    </span>
+                  )}
+                </span>
+              </div>
+              {/* A bar per probe round: height and colour follow the round trip,
+                  a lost one collapses to a red notch on the baseline. */}
+              <div aria-label={`最近 ${samples.length} 次探测`} className="mt-1 flex h-3.5 items-end gap-[2px]">
+                {samples.map((sample, index) =>
+                  sample < 0 ? (
+                    <span
+                      key={index}
+                      className="h-[22%] min-w-[2px] flex-1 rounded-[2px] bg-ping-bad"
+                      title="丢包"
+                    />
+                  ) : (
+                    <span
+                      key={index}
+                      className={cn(
+                        "min-w-[2px] flex-1 rounded-[2px]",
+                        { good: "bg-ping-good", warn: "bg-ping-warn", bad: "bg-ping-bad" }[level(sample)],
+                      )}
+                      style={{ height: `${30 + Math.min(70, (sample / 250) * 70)}%` }}
+                      title={`${sample} ms`}
+                    />
+                  ),
                 )}
-              </span>
+              </div>
             </div>
           )
         })}
