@@ -177,7 +177,6 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
   const pings = node.pings ?? []
   const hist = usePingHistory(node.id)
   if (!pings.length) return null
-  const answered = pings.filter((ping) => ping.latency !== null && ping.latency >= 0).length
   const text = (latency: number | null) => {
     if (latency === null) return "text-muted-foreground"
     return latency < 0 || latency >= 200 ? "text-ping-bad" : latency >= 100 ? "text-ping-warn" : "text-ping-good"
@@ -200,12 +199,8 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
         e.stopPropagation()
         onOpenLatency()
       }}
-      className="-mx-2 mt-4 cursor-pointer rounded-b-lg border-t px-2 pt-4 text-xs transition-colors hover:bg-muted/60"
+      className="-mx-2 mt-4 cursor-pointer rounded-b-lg border-t px-2 pt-3 text-xs transition-colors hover:bg-muted/60"
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="font-medium">TCPing</span>
-        <span className="tnum text-muted-foreground">{answered} / {pings.length}</span>
-      </div>
       <div className="space-y-2">
         {pings.map((ping) => {
           const buckets = hist?.ping.filter((b) => b.task_id === ping.id) ?? null
