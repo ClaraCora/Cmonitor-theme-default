@@ -57,8 +57,8 @@ export function Status({ node }: { node: Node }) {
   )
 }
 
-/** Where the machine is: a flag when the pack knows the code, the code itself
- * when it does not. */
+/** Where the machine is, ahead of the name: a flag when the pack knows the
+ * code, the code itself when it does not. */
 export function Country({ node }: { node: Node }) {
   const [failed, setFailed] = useState(false)
   if (!node.country) return null
@@ -193,9 +193,15 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
 
 function Tags({ node }: { node: Node }) {
   const tags = parseTags(node.tags)
-  if (!tags.length) return null
+  const price = node.price > 0 ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}` : null
+  if (!tags.length && !price) return null
   return (
     <div className="mt-4 flex flex-wrap gap-1.5 border-t pt-3">
+      {price && (
+        <Badge variant="outline" className="tnum font-normal text-ping-good">
+          {price}
+        </Badge>
+      )}
       {tags.map((tag, index) => (
         <Badge key={`${tag.text}-${index}`} variant="outline" className="node-tag font-normal" data-color={tag.color}>
           {tag.text}
@@ -223,8 +229,8 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h3 className="truncate font-medium">{node.name}</h3>
             <Country node={node} />
+            <h3 className="truncate font-medium">{node.name}</h3>
           </div>
           <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
             {node.os && osIconPath(node.os) && (
@@ -235,8 +241,6 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
             {node.arch ? ` · ${node.arch}` : ""}
           </p>
         </div>
-        {/* State right, identity left, one line each. */}
-        <Status node={node} />
       </div>
 
       {/* One layout for both states: a disconnected node still knows its
@@ -310,15 +314,9 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
         </p>
       )}
       <Latency node={node} onOpenLatency={onOpenLatency} />
-      {/* The plan in its own terms, left; the renewal date, right. */}
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-        <span>
-          {node.price > 0 && (
-            <Badge variant="outline" className="tnum font-normal text-ping-good">
-              {money(node.price, node.currency)} / {CYCLES[node.billing_cycle] ?? node.billing_cycle}
-            </Badge>
-          )}
-        </span>
+      {/* Live state left, renewal date right; the plan's price sits with the tags. */}
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <Status node={node} />
         <Expiry node={node} />
       </div>
       <Tags node={node} />
