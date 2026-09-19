@@ -227,20 +227,23 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Country node={node} />
-            <h3 className="truncate font-medium">{node.name}</h3>
-          </div>
-          <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-            {node.os && osIconPath(node.os) && (
-              <img src={osIconPath(node.os)!} alt="" loading="lazy" className="size-4 shrink-0" />
-            )}
-            <span className="truncate">{node.os ? osName(node.os) : "等待首次上报"}</span>
-            {node.virt && node.virt !== "none" ? ` · ${node.virt}` : ""}
-            {node.arch ? ` · ${node.arch}` : ""}
-          </p>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Country node={node} />
+          <h3 className="truncate font-medium">{node.name}</h3>
         </div>
+        {/* The OS is an icon in the corner; the words behind it answer to a
+            hover. Never-connected nodes simply show no icon. */}
+        {node.os && osIconPath(node.os) && (
+          <img
+            src={osIconPath(node.os)!}
+            alt={osName(node.os)}
+            title={[osName(node.os), node.virt && node.virt !== "none" ? node.virt : "", node.arch]
+              .filter(Boolean)
+              .join(" · ")}
+            loading="lazy"
+            className="size-5 shrink-0"
+          />
+        )}
       </div>
 
       {/* One layout for both states: a disconnected node still knows its
