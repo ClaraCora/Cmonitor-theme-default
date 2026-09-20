@@ -39,6 +39,29 @@ function Flow({ down, up, className }: { down: string; up: string; className?: s
   )
 }
 
+/** One row of the speed podium: the name, then both directions beside it.
+ * The name yields the space, since the rates are what the row exists for. */
+function RateRow({ node }: { node: Node }) {
+  const m = node.metrics!
+  return (
+    // Below sm the name takes its own line: two rates leave it only a sliver
+    // of a half-width tile, and a name nobody can read is worse than a wrap.
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+      <span className="min-w-0 truncate max-sm:basis-full" title={node.name}>
+        {node.name}
+      </span>
+      <span className="tnum ml-auto inline-flex shrink-0 items-center gap-0.5 font-semibold max-sm:ml-0">
+        <ArrowDown className="size-3 text-muted-foreground" />
+        {rate(m.net_rx)}
+      </span>
+      <span className="tnum inline-flex shrink-0 items-center gap-0.5 font-semibold">
+        <ArrowUp className="size-3 text-muted-foreground" />
+        {rate(m.net_tx)}
+      </span>
+    </div>
+  )
+}
+
 /**
  * A bare polyline with no axes or tooltips: at this size only the shape is
  * legible, and recharts would bring a full chart's machinery for it. Series share
@@ -68,14 +91,12 @@ export function Summary({ nodes }: { nodes: Node[] }) {
   const online = nodes.filter((n) => n.online)
   const sum = (pick: (n: Node) => number) => nodes.reduce((total, n) => total + pick(n), 0)
 
-  // Rank by combined live traffic so a node carrying most of the fleet's current
-  // work is visible even when that traffic is asymmetric.
-  const fastest = online.reduce<Node | null>((top, n) => {
-    if (!n.metrics) return top
-    if (!top || n.metrics.net_rx + n.metrics.net_tx > top.metrics!.net_rx + top.metrics!.net_tx) return n
-    return top
-  }, null)
-  const fastestRate = fastest?.metrics
+  // Rank by combined live traffic so the nodes carrying most of the fleet's
+  // current work are visible even when that traffic is asymmetric.
+  const podium = online
+    .filter((n) => n.metrics)
+    .sort((a, b) => b.metrics!.net_rx + b.metrics!.net_tx - (a.metrics!.net_rx + a.metrics!.net_tx))
+    .slice(0, 3)
   // The same push produced `nodes` and this sample, so the figure above the line
   // is that line's last point.
   const now = speedHistory.at(-1) ?? { rx: 0, tx: 0 }
@@ -91,14 +112,13 @@ export function Summary({ nodes }: { nodes: Node[] }) {
         </div>
       </Tile>
 
-      <Tile icon={Activity} label="速率最高节点">
-        {fastestRate ? (
-          <Flow down={rate(fastestRate.net_rx)} up={rate(fastestRate.net_tx)} className="mt-1 text-sm font-semibold" />
-        ) : (
-          <div className="tnum mt-1 text-xl font-semibold">—</div>
-        )}
-        <div className="mt-auto truncate pt-1 text-xs text-muted-foreground">
-          {fastest ? fastest.name : "无在线节点"}
+      <Tile icon={Activity} label="速率TOP3节点">
+        <div className="mt-1.5 space-y-1">
+          {podium.length > 0 ? (
+            podium.map((n) => <RateRow key={n.id} node={n} />)
+          ) : (
+            <div className="text-xs text-muted-foreground">无在线节点</div>
+          )}
         </div>
       </Tile>
 
