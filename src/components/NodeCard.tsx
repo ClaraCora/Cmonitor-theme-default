@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
 import { api, type Node } from "@/lib/api"
-import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, uptime } from "@/lib/format"
+import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, trip, uptime } from "@/lib/format"
 import { flagPath, osIconPath } from "@/lib/icons"
 import { parseTags } from "@/lib/tags"
 import { cn } from "@/lib/utils"
@@ -113,38 +113,86 @@ function Expiry({ node }: { node: Node }) {
 /** One probe round, already thinned by the hub: the bucket's median trip and
  * the share of it that timed out. */
 type PingBucket = { task_id: number; ts: number; latency: number | null; loss?: number }
+type PingHistory = { ping: PingBucket[]; loss?: Record<string, number> }
 
 // Twenty samples is a shallow window: at a one-minute interval it covers
 // twenty minutes, and a storm half an hour ago is already gone. The detail
 // endpoint answers the same buckets it draws from, so each card asks once for
-// its node's recent history and shares the answer across re-renders. The
-// fetch is per mount rather than per frame, and refused answers are cached
-// too, so a busy hub is not asked again for ninety seconds.
+// its node's recent history and shares the answer across re-renders.
 const HISTORY_TTL = 90_000
-const pingHistoryCache = new Map<number, { at: number; data: { ping: PingBucket[]; loss?: Record<string, number> } | null }>()
+// A refused answer is remembered only briefly: the hub recovers, and the next
+// mount should ask again rather than serve the shallow live window for over a
+// minute.
+const RETRY_TTL = 8_000
+const pingHistoryCache = new Map<number, { at: number; data: PingHistory | null }>()
+const pingHistoryInflight = new Map<number, Promise<PingHistory | null>>()
+
+// The hub builds at most four history windows at a time and refuses the rest
+// with a 503, since each holds the connection its agents report through. A
+// page of cards mounts together, so its requests are paced here rather than
+// allowed to stampede that gate.
+let historyActive = 0
+const historyQueue: (() => void)[] = []
+async function historySlot<T>(run: () => Promise<T>): Promise<T> {
+  if (historyActive >= 2) await new Promise<void>((release) => historyQueue.push(release))
+  historyActive++
+  try {
+    return await run()
+  } finally {
+    historyActive--
+    historyQueue.shift()?.()
+  }
+}
+
+const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms))
+
+/** The node's two hours of probe buckets, or null when the hub would not
+ * answer. A refusal is retried before it is believed: the gate's 503 marks a
+ * busy moment, not a missing history. */
+function loadPingHistory(nodeId: number): Promise<PingHistory | null> {
+  const cached = pingHistoryCache.get(nodeId)
+  if (cached && Date.now() - cached.at < (cached.data ? HISTORY_TTL : RETRY_TTL)) {
+    return Promise.resolve(cached.data)
+  }
+  const running = pingHistoryInflight.get(nodeId)
+  if (running) return running
+  const request = (async () => {
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const data = await historySlot(() =>
+            api<PingHistory>(`/nodes/${nodeId}/metrics?hours=2&points=60&series=ping`),
+          )
+          pingHistoryCache.set(nodeId, { at: Date.now(), data })
+          return data
+        } catch {
+          if (attempt >= 3) {
+            pingHistoryCache.set(nodeId, { at: Date.now(), data: null })
+            return null
+          }
+          await wait(1_500 * (attempt + 1))
+        }
+      }
+    } finally {
+      pingHistoryInflight.delete(nodeId)
+    }
+  })()
+  pingHistoryInflight.set(nodeId, request)
+  return request
+}
 
 function usePingHistory(nodeId: number) {
-  const [hist, setHist] = useState<{ ping: PingBucket[]; loss?: Record<string, number> } | null>(() => {
+  const [hist, setHist] = useState<PingHistory | null>(() => {
     const cached = pingHistoryCache.get(nodeId)
-    return cached && Date.now() - cached.at < HISTORY_TTL ? cached.data : null
+    return cached?.data && Date.now() - cached.at < HISTORY_TTL ? cached.data : null
   })
   useEffect(() => {
-    const cached = pingHistoryCache.get(nodeId)
-    if (cached && Date.now() - cached.at < HISTORY_TTL) {
-      // oxlint-disable-next-line react/set-state-in-effect
-      setHist(cached.data)
-      return
-    }
     let active = true
-    api<{ ping: PingBucket[]; loss?: Record<string, number> }>(`/nodes/${nodeId}/metrics?hours=2&points=40&series=ping`)
-      .then((d) => {
-        pingHistoryCache.set(nodeId, { at: Date.now(), data: d })
-        if (active) setHist(d)
-      })
-      .catch(() => {
-        pingHistoryCache.set(nodeId, { at: Date.now(), data: null })
-        if (active) setHist(null)
-      })
+    loadPingHistory(nodeId).then((d) => {
+      // A refusal keeps whatever the card already shows, live samples
+      // included; replacing a genuine answer with nothing would be worse.
+      if (active && d) setHist(d)
+    })
     return () => {
       active = false
     }
@@ -152,9 +200,11 @@ function usePingHistory(nodeId: number) {
   return hist
 }
 
-/** One bar in a probe strip: a height-coloured trip, with the bucket's lost
- * share as a red segment on the baseline. */
-function PingBar({ latency, loss, title }: { latency: number | null; loss: number; title: string }) {
+/** One bar in a probe strip: height against the row's own peak, so a fast
+ * link still shows its jitter instead of a dotted line along the baseline.
+ * Colour stays absolute, reading the same on every card. The bucket's lost
+ * share is a red segment beneath. */
+function PingBar({ latency, loss, peak, title }: { latency: number | null; loss: number; peak: number; title: string }) {
   if (latency === null) {
     return <span className="h-[22%] min-w-[2px] flex-1 rounded-[2px] bg-ping-bad" title={title} />
   }
@@ -163,7 +213,7 @@ function PingBar({ latency, loss, title }: { latency: number | null; loss: numbe
     <span className="flex h-full min-w-[2px] flex-1 flex-col justify-end" title={title}>
       <span
         className={cn("rounded-[2px]", { good: "bg-ping-good", warn: "bg-ping-warn", bad: "bg-ping-bad" }[level])}
-        style={{ height: `${30 + Math.min(70, (latency / 250) * 70)}%` }}
+        style={{ height: `${45 + 55 * (latency / peak)}%` }}
       />
       {loss > 0 && <span className="rounded-b-[2px] bg-ping-bad" style={{ height: `${Math.min(100, loss)}%` }} />}
     </span>
@@ -210,6 +260,10 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
           const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
           const ok = (fromHistory ? buckets.map((b) => b.latency) : samples).filter((v): v is number => v !== null && v >= 0)
           const avg = ok.length > 1 ? Math.round(ok.reduce((sum, v) => sum + v, 0) / ok.length) : null
+          // Heights are relative to the row's own peak: against an absolute
+          // ceiling a sub-millisecond link flattens into a dotted line that
+          // reads as missing data. The 1 guards an all-zero row.
+          const peak = Math.max(1, ...ok)
           // The rate needs the window it is taken over. History's figure comes
           // from the raw samples inside the window; the live one from the hub's
           // own 20-sample window, never from the single-sample fallback.
@@ -223,11 +277,12 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
                   key={i}
                   latency={b.latency}
                   loss={b.loss ?? 0}
-                  title={`${clock(b.ts)} · ${b.latency === null ? "全部丢失" : `${b.latency} ms`}${(b.loss ?? 0) > 0 && b.latency !== null ? ` · 丢 ${b.loss}%` : ""}`}
+                  peak={peak}
+                  title={`${clock(b.ts)} · ${b.latency === null ? "全部丢失" : trip(b.latency)}${(b.loss ?? 0) > 0 && b.latency !== null ? ` · 丢 ${b.loss}%` : ""}`}
                 />
               ))
             : samples.map((s, i) => (
-                <PingBar key={i} latency={s < 0 ? null : s} loss={s < 0 ? 100 : 0} title={s < 0 ? "丢包" : `${s} ms`} />
+                <PingBar key={i} latency={s < 0 ? null : s} loss={s < 0 ? 100 : 0} peak={peak} title={s < 0 ? "丢包" : trip(s)} />
               ))
           return (
             <div key={ping.id} className="min-w-0">
@@ -235,10 +290,10 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
                 <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
                 <span className="tnum shrink-0 font-medium">
                   <span className={text(ping.latency)}>
-                    {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : `${ping.latency} ms`}
+                    {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : trip(ping.latency)}
                   </span>
                   {avg !== null && (
-                    <span className="font-normal text-muted-foreground">{` · 均 ${avg} ms`}</span>
+                    <span className="font-normal text-muted-foreground">{` · 均 ${trip(avg)}`}</span>
                   )}
                   {lossPct > 0 && (
                     <span className="font-normal text-ping-bad">

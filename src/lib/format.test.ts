@@ -3,7 +3,7 @@
 // requires no runner, framework or dependency.
 //
 // Nothing imports it, so the bundle never includes it.
-import { axisBytes, axisTop, bytes, cpuName, daysUntil, osName, pair, quarters, timeTicks, uptime } from "./format.ts"
+import { axisBytes, axisTop, bytes, cpuName, daysUntil, osName, pair, quarters, timeTicks, trip, uptime } from "./format.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -28,6 +28,11 @@ eq(bytes(1024, 1), "1.0 KB", "digits 覆盖默认档位")
 // pair: one unit when both sides share it, two when they do not.
 eq(pair(300 * 1024 ** 2, 900 * 1024 ** 2), "300.00 / 900.00 MB", "同单位只写一次")
 eq(pair(300 * 1024 ** 2, 3 * 1024 ** 3), "300 MB / 3.00 GB", "跨单位各写各的")
+
+// trip: the probe truncates to whole milliseconds, so a zero is a
+// sub-millisecond handshake and reads as one, not as a stopped clock.
+eq(trip(0), "<1 ms", "亚毫秒握手不写成 0")
+eq(trip(37), "37 ms", "整毫秒照常")
 
 // axisBytes: ticks under three digits keep one decimal, or a narrow axis repeats
 // a label; a trailing .0 adds nothing.

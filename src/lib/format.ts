@@ -51,6 +51,13 @@ export function rate(n: number): string {
   return `${bytes(n, 1)}/s`
 }
 
+/** A round trip in whole milliseconds. Zero means the handshake beat the
+ * clock, not the network: probes truncate to milliseconds, so a
+ * sub-millisecond answer arrives as 0 and is read as one. */
+export function trip(v: number): string {
+  return v === 0 ? "<1 ms" : `${v} ms`
+}
+
 export function percent(used: number, total: number): number {
   return total > 0 ? Math.min(100, (used / total) * 100) : 0
 }

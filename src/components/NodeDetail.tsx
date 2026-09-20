@@ -11,7 +11,7 @@ import { Country, Status } from "@/components/NodeCard"
 import { api, type Node } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
-  axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks,
+  axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks, trip,
 } from "@/lib/format"
 
 type Point = {
@@ -161,7 +161,7 @@ function PingTip({ active, payload, label, swatch, probes, smooth }: {
               <span className="tnum ml-auto pl-4 font-medium text-ping-bad">全部丢失</span>
             ) : (
               <span className="tnum ml-auto pl-4">
-                {Number(e.value ?? e.raw)} ms
+                {trip(Number(e.value ?? e.raw))}
                 {e.loss > 0 && <span className="text-ping-bad">{` · 丢 ${e.loss}%`}</span>}
               </span>
             )}
@@ -551,7 +551,7 @@ export function NodeDetail({ node }: { node: Node }) {
                       className="tnum mt-1 block truncate text-xs text-muted-foreground"
                       title="窗口平均延迟 · 丢包率 · 平均波动"
                     >
-                      {s.avg === null ? "—" : `${s.avg} ms`}
+                      {s.avg === null ? "—" : trip(s.avg)}
                       {" · "}
                       <span className={s.loss > 0 ? "font-medium text-ping-bad" : undefined}>
                         {s.loss.toFixed(2)}%
