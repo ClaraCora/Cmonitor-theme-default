@@ -3,6 +3,7 @@ import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
+import { TrafficRanking } from "@/components/TrafficRanking"
 import { VisitorCard } from "@/components/VisitorCard"
 import { flagPath } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
@@ -159,20 +160,22 @@ export default function App() {
   return (
     <div className="min-h-svh">
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="mx-auto flex max-w-[1400px] items-center gap-1.5 px-4 py-3 sm:gap-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. */}
-          <button className="flex items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
+          <button className="flex min-w-0 flex-1 items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
             <img src="/favicon.svg" alt="" className="size-5 rounded-md" />
-            {me.site_name || "Monitor"}
+            <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
-          <div className="flex-1" />
+          <TrafficRanking nodes={sorted} />
           {/* The hub names the panel only to a signed-in caller, so the path
               never appears in the bundle an anonymous visitor downloads. */}
           {me.authed && me.admin_url && (
             <Button variant="ghost" size="sm" asChild>
               <a href={me.admin_url}>
-                <Wrench /> 进入后台
+                <Wrench />
+                <span className="hidden sm:inline">进入后台</span>
+                <span className="sr-only sm:hidden">进入后台</span>
               </a>
             </Button>
           )}
