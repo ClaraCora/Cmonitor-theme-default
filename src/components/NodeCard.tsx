@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
 import { api, type Node } from "@/lib/api"
-import { bytes, CYCLES, daysUntil, FOREVER, money, osName, pair, percent, rate, trip, uptime } from "@/lib/format"
+import { bytes, CYCLES, daysUntil, expiryText, FOREVER, money, osName, pair, percent, rate, trip, uptime } from "@/lib/format"
 import { flagPath, osIconPath } from "@/lib/icons"
 import { parseTags } from "@/lib/tags"
 import { cn } from "@/lib/utils"
@@ -105,7 +105,7 @@ function Expiry({ node }: { node: Node }) {
   return (
     <span className={cn("tnum inline-flex items-center gap-1 text-xs", tone)}>
       <CalendarDays className="size-3" />
-      {days < 0 ? `已过期 ${-days} 天` : `${days} 天后到期`}
+      {expiryText(days)}
     </span>
   )
 }

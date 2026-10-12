@@ -78,6 +78,13 @@ export function daysUntil(date?: string | null): number | null {
   return Math.ceil((target - Date.now()) / 86400000)
 }
 
+/** Long expiry countdowns use fixed 365-day years, not calendar anniversaries. */
+export function expiryText(days: number): string {
+  if (days < 0) return `已过期 ${-days} 天`
+  if (days < 365) return `${days} 天后到期`
+  return `${Math.floor(days / 365)}年${days % 365}天后到期`
+}
+
 /**
  * No expiry and no traffic cap are both rendered as the absence of a ceiling.
  * U+221E rather than the emoji, which arrives as a coloured tile from whatever

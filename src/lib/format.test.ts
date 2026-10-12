@@ -3,7 +3,7 @@
 // requires no runner, framework or dependency.
 //
 // Nothing imports it, so the bundle never includes it.
-import { axisBytes, axisTop, bytes, cpuName, daysUntil, osName, pair, quarters, timeTicks, trip, uptime } from "./format.ts"
+import { axisBytes, axisTop, bytes, cpuName, daysUntil, expiryText, osName, pair, quarters, timeTicks, trip, uptime } from "./format.ts"
 
 let failed = 0
 function eq(got: unknown, want: unknown, what: string) {
@@ -98,6 +98,17 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   eq(daysUntil(null), null, "无到期日")
   eq(daysUntil("不是日期"), null, "无法解析的日期")
 }
+
+// expiryText: use 365-day years for long countdowns; keep short and expired labels.
+eq(expiryText(-400), "已过期 400 天", "已过期提示仍显示天数")
+eq(expiryText(-1), "已过期 1 天", "已过期一天")
+eq(expiryText(0), "0 天后到期", "当天到期")
+eq(expiryText(7), "7 天后到期", "临近到期仍显示天数")
+eq(expiryText(364), "364 天后到期", "不足一年仍显示天数")
+eq(expiryText(365), "1年0天后到期", "整一年")
+eq(expiryText(400), "1年35天后到期", "一年加余下天数")
+eq(expiryText(730), "2年0天后到期", "整两年")
+eq(expiryText(800), "2年70天后到期", "多年加余下天数")
 
 eq(uptime(0), "—", "没上报过就不写时长")
 eq(uptime(90), "1 分", "不足一小时")
