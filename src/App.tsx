@@ -93,7 +93,7 @@ export default function App() {
   const [dark, toggleTheme] = useTheme()
   const [me, setMe] = useState<Me | null>(null)
   const [meError, setMeError] = useState("")
-  const { nodes, error, closed } = useNodes()
+  const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
   const [region, setRegion] = useState<string | null>(null)
 
@@ -134,7 +134,6 @@ export default function App() {
   // name. The site name rather than a fixed string, since the hub lets an operator
   // rename the site.
   useEffect(() => {
-    if (!me) return
     document.title = [selected?.name, me?.site_name || "Monitor"].filter(Boolean).join(" · ")
   }, [selected?.name, me?.site_name])
 
@@ -186,6 +185,8 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-4 sm:px-6">
+        {stale && <div role="status" className="rounded-lg border p-3 text-sm">数据更新中断，以下为最近一次收到的状态（{lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString("zh-CN") : "—"}）。正在尝试重新连接。</div>}
+        {!stale && lastUpdatedAt && <p className="text-xs text-muted-foreground">{connection === "live" ? "实时更新" : "轮询更新"} · 最近更新 {new Date(lastUpdatedAt).toLocaleTimeString("zh-CN")}</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}
 
         {open !== null ? (
@@ -208,7 +209,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            <Summary nodes={sorted} />
+            <Summary nodes={sorted} stale={stale} />
             <RegionBar nodes={sorted} region={region} onPick={setRegion} />
             {sorted.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>

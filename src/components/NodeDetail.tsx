@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { median } from "d3-array"
 import {
   Area, AreaChart, Brush, CartesianGrid, ComposedChart, Line, LineChart, ResponsiveContainer,
@@ -12,7 +12,7 @@ import { WebsiteLink } from "@/components/WebsiteLink"
 import { api, type Node } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
-  axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, FOREVER, money, osName, rate, timeTicks, trip,
+  axisBytes, axisTop, bytes, clockFor, quarters, cpuName, CYCLES, money, osName, rate, timeTicks, trip,
 } from "@/lib/format"
 
 type Point = {
@@ -268,11 +268,14 @@ export function NodeDetail({ node }: { node: Node }) {
   // as the axis rescales to what remains.
   const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
   const [data, setData] = useState<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss } | null>(null)
+  const previousHistory = useRef<typeof data>(null)
   // Retained rather than folded into an empty result: a refused request and an
   // empty window are different answers, and the hub has reason to refuse this one
   // -- it caps how many history windows it builds concurrently, since each holds
   // the connection the agents report through. Rendered as an empty window, a 503
   // would misdirect the reader.
+  const refreshHistory = useRef<() => void>(() => {})
+  const [refreshing, setRefreshing] = useState(false)
   const [failed, setFailed] = useState("")
   // Where the brush has been dragged, so the axis reticks for the visible span
   // rather than retaining the whole window's ticks.
@@ -286,6 +289,7 @@ export function NodeDetail({ node }: { node: Node }) {
     // flight.
     // oxlint-disable-next-line react/set-state-in-effect
     setData(null)
+    previousHistory.current = null
     // oxlint-disable-next-line react/set-state-in-effect
     setZoom(null)
     // oxlint-disable-next-line react/set-state-in-effect
@@ -300,17 +304,35 @@ export function NodeDetail({ node }: { node: Node }) {
     // to two thirds of every response and was never drawn.
     const points = Math.round(globalThis.innerWidth * (globalThis.devicePixelRatio || 1))
     const series = tab === "latency" ? "ping" : "metrics"
-    api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
-      `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
-    )
-      .then((next) => { if (active) setData(next) })
-      .catch((e: Error) => {
-        // `|| "..."` as in App.tsx: HTTP/2 dropped statusText, so a bodiless
-        // failure from a proxy arrives as the empty string and renders as no
-        // error.
-        if (active) { setFailed(e.message || "网络错误"); setData({ metrics: [], ping: [], probes: {} }) }
-      })
-    return () => { active = false }
+    let running = false
+    const load = () => {
+      if (running || document.hidden) return
+      running = true; setRefreshing(true)
+      api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
+        `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
+      ).then((next) => {
+        if (!active) return
+        setFailed("")
+        const previous = previousHistory.current
+        previousHistory.current = next
+        if (previous) setZoom(range => {
+          if (!range) return null
+          const oldRows = [...new Set(previous.ping.map(p => p.ts))].sort((a,b) => a-b)
+          const newRows = [...new Set(next.ping.map(p => p.ts))].sort((a,b) => a-b)
+          const start = oldRows[range[0]], end = oldRows[range[1]]
+          const left = newRows.findIndex(ts => ts >= start)
+          const right = newRows.findLastIndex(ts => ts <= end)
+          return left >= 0 && right > left ? [left,right] : null
+        })
+        setData(next)
+      }).catch((e: Error) => { if (active) setFailed(e.message || "网络错误") })
+        .finally(() => { running=false; if (active) setRefreshing(false) })
+    }
+    refreshHistory.current = load
+    load()
+    const timer = setInterval(load, 60_000)
+    document.addEventListener("visibilitychange", load)
+    return () => { active = false; clearInterval(timer); document.removeEventListener("visibilitychange", load) }
   }, [node.id, hours, tab])
 
   const m = node.metrics
@@ -470,16 +492,18 @@ export function NodeDetail({ node }: { node: Node }) {
             node.price > 0
               ? `${money(node.price, node.currency)} / ${CYCLES[node.billing_cycle] ?? node.billing_cycle}`
               : "免费",
-            node.expires_at ? `${node.expires_at} 到期` : FOREVER,
+            node.permanent ? "永久有效" : node.expires_at ? `${node.expires_at} 到期` : "未设置到期日",
           ].join(" · ")}
         />
       </dl>
 
+      {node.traffic_incomplete && <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">本期流量历史不完整，仅统计已记录用量。管理员可在节点设置中校正。</p>}
       {node.remark && (
         <p className="rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{node.remark}</p>
       )}
 
       <div className="space-y-2 border-t pt-4">
+        <button type="button" className="float-right rounded-md px-3 py-2 text-sm hover:bg-muted disabled:opacity-50" disabled={refreshing} onClick={() => refreshHistory.current()}>{refreshing ? "刷新中…" : "刷新图表"}</button>
         <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
           {TABS.map((t) => (
             <Tab key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
@@ -518,10 +542,10 @@ export function NodeDetail({ node }: { node: Node }) {
         </div>
       </div>
 
+      {failed && <p className="text-sm text-destructive" role="alert">{data ? "图表刷新失败，保留上次结果" : "读取历史数据失败"}：{failed}，可点击刷新图表重试。</p>}
       {!data ? (
-        <Skeleton className="h-40 w-full" />
-      ) : failed ? (
-        <p className="py-8 text-center text-sm text-destructive" role="alert">读取历史数据失败：{failed}</p>
+        failed ? null : <Skeleton className="h-40 w-full" />
+
       ) : tab === "latency" ? (
         pingSeries.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">这段时间没有延迟数据</p>
@@ -688,6 +712,8 @@ export function NodeDetail({ node }: { node: Node }) {
                     ))}
                     {/* Drag either handle to zoom into a stretch of the trend. */}
                     <Brush
+                      startIndex={zoom?.[0]}
+                      endIndex={zoom?.[1]}
                       dataKey="ts"
                       height={18}
                       travellerWidth={8}

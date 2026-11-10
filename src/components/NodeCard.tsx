@@ -85,20 +85,21 @@ export function Country({ node }: { node: Node }) {
 // Traffic uses the plan's own counting rule, so the bar matches the quota the
 // node is billed against.
 function trafficFoot(node: Node) {
+  const suffix = node.traffic_incomplete ? "（已记录，历史不完整）" : ""
   return node.traffic_limit > 0
-    ? pair(monthUsage(node), node.traffic_limit)
-    : `${bytes(monthUsage(node))} / ${FOREVER}`
+    ? `${pair(monthUsage(node), node.traffic_limit)}${suffix}`
+    : `${bytes(monthUsage(node))} / ${FOREVER}${suffix}`
 }
 
-// No date means nothing expires: a permanent host, or one with no renewal set. A
+// An absent date distinguishes a permanent host from an unset renewal date. A
 // blank corner asserts neither.
 function Expiry({ node }: { node: Node }) {
   const days = daysUntil(node.expires_at)
   if (days === null) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="永不到期">
+      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={node.permanent ? "永久有效" : "未设置到期日"}>
         <CalendarDays className="size-3" />
-        {FOREVER}
+        {node.permanent ? FOREVER : "未设置"}
       </span>
     )
   }
@@ -120,7 +121,7 @@ type PingHistory = { ping: PingBucket[]; loss?: Record<string, number> }
 // twenty minutes, and a storm half an hour ago is already gone. The detail
 // endpoint answers the same buckets it draws from, so each card asks once for
 // its node's recent history and shares the answer across re-renders.
-const HISTORY_TTL = 90_000
+const HISTORY_TTL = 55_000
 // A refused answer is remembered only briefly: the hub recovers, and the next
 // mount should ask again rather than serve the shallow live window for over a
 // minute.
@@ -189,13 +190,18 @@ function usePingHistory(nodeId: number) {
   })
   useEffect(() => {
     let active = true
-    loadPingHistory(nodeId).then((d) => {
+    const load = () => { if (document.hidden) return; loadPingHistory(nodeId).then((d) => {
       // A refusal keeps whatever the card already shows, live samples
       // included; replacing a genuine answer with nothing would be worse.
       if (active && d) setHist(d)
-    })
+    }) }
+    load()
+    const timer = setInterval(load, 60_000)
+    document.addEventListener("visibilitychange", load)
     return () => {
       active = false
+      clearInterval(timer)
+      document.removeEventListener("visibilitychange", load)
     }
   }, [nodeId])
   return hist

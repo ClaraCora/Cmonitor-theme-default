@@ -87,7 +87,7 @@ function Spark({ series }: { series: { values: number[]; className: string }[] }
   )
 }
 
-export function Summary({ nodes }: { nodes: Node[] }) {
+export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boolean }) {
   const online = nodes.filter((n) => n.online)
   const sum = (pick: (n: Node) => number) => nodes.reduce((total, n) => total + pick(n), 0)
 
@@ -108,7 +108,7 @@ export function Summary({ nodes }: { nodes: Node[] }) {
           {online.length} / {nodes.length}
         </div>
         <div className="mt-auto pt-1 text-xs text-muted-foreground">
-          {nodes.length - online.length > 0 ? `${nodes.length - online.length} 个离线` : "全部在线"}
+          {stale ? "最近一次收到的在线状态" : nodes.length - online.length > 0 ? `${nodes.length - online.length} 个离线` : "全部在线"}
         </div>
       </Tile>
 
@@ -132,7 +132,7 @@ export function Summary({ nodes }: { nodes: Node[] }) {
         <Flow down={bytes(sum((n) => n.total_rx))} up={bytes(sum((n) => n.total_tx))} className="mt-0.5 text-sm" />
       </Tile>
 
-      <Tile icon={Gauge} label="实时网速">
+      <Tile icon={Gauge} label={stale ? "最近网速" : "实时网速"}>
         <Flow down={rate(now.rx)} up={rate(now.tx)} className="mt-1 text-sm font-semibold" />
         <div className="mt-auto pt-1">
           <Spark
