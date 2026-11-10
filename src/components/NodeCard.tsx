@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, CalendarDays, Cpu, Globe, HardDrive, MemoryStick } 
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
+import { WebsiteLink } from "@/components/WebsiteLink"
 import { api, type Node } from "@/lib/api"
 import { bytes, CYCLES, daysUntil, expiryText, FOREVER, money, osName, pair, percent, rate, trip, uptime } from "@/lib/format"
 import { flagPath, osIconPath } from "@/lib/icons"
@@ -349,9 +350,10 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen())}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <Country node={node} />
           <h3 className="truncate font-medium">{node.name}</h3>
+          <WebsiteLink url={node.website} />
         </div>
         {/* The OS is an icon in the corner; the words behind it answer to a
             hover. Never-connected nodes simply show no icon. */}
