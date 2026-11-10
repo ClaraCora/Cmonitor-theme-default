@@ -55,6 +55,9 @@ export type Node = {
   currency: string
   billing_cycle: string
   expires_at: string | null
+  permanent?: boolean
+  traffic_incomplete?: boolean
+  muted_until?: number
   traffic_limit: number
   traffic_mode: string
   traffic_reset_day: number
@@ -129,6 +132,14 @@ export function safeNodes(nodes: Node[]): Node[] {
  * back to polling if it cannot be established.
  */
 export function useNodes() {
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+  const [connection, setConnection] = useState("connecting")
+  const stale = lastUpdatedAt !== null && now - lastUpdatedAt >= 15_000
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(timer)
+  }, [])
   const [nodes, setNodes] = useState<Node[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Set when the hub answers 401: the status page has been closed to anonymous
@@ -142,8 +153,12 @@ export function useNodes() {
     let poll: ReturnType<typeof setInterval> | null = null
     let retry: ReturnType<typeof setTimeout> | null = null
     let closed = false
+    let lastReceived = Date.now()
 
     const receive = (list: Node[]) => {
+      if (closed || !Array.isArray(list)) return
+      lastReceived = Date.now()
+      setLastUpdatedAt(lastReceived)
       const safe = safeNodes(list)
       sample(safe)
       setNodes(safe)
@@ -153,9 +168,10 @@ export function useNodes() {
 
     const fetchOnce = () =>
       api<{ nodes: Node[] }>("/nodes")
-        .then((d) => receive(d.nodes))
+        .then((d) => { setConnection("polling"); receive(d.nodes) })
         .catch((e: Error) => {
-          setError(e.message)
+          if (closed) return
+          setError(e.message || "无法获取最新状态")
           if (e instanceof ApiError && e.status === 401) setClosed(true)
         })
 
@@ -173,7 +189,7 @@ export function useNodes() {
         return
       }
       socket.onmessage = (event) => {
-        receive(JSON.parse(event.data).nodes)
+        try { receive(JSON.parse(event.data).nodes); setConnection("live") } catch { return }
         // The stream has returned; the poll was only covering for it.
         if (poll) {
           clearInterval(poll)
@@ -183,19 +199,23 @@ export function useNodes() {
       socket.onerror = () => socket?.close()
       socket.onclose = () => {
         if (closed) return
+        setConnection("reconnecting")
+        fetchOnce()
         poll ??= setInterval(fetchOnce, 5000)
         retry = setTimeout(connect, 5000)
       }
     }
     connect()
+    const watchdog = setInterval(() => { if (!closed && Date.now()-lastReceived >= 10_000) fetchOnce() }, 5000)
 
     return () => {
       closed = true
+      clearInterval(watchdog)
       socket?.close()
       if (poll) clearInterval(poll)
       if (retry) clearTimeout(retry)
     }
   }, [])
 
-  return { nodes, error, closed }
+  return { nodes, error, closed, lastUpdatedAt, stale, connection }
 }
