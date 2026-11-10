@@ -8,6 +8,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Country, Status } from "@/components/NodeCard"
+import { WebsiteLink } from "@/components/WebsiteLink"
 import { api, type Node } from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
@@ -431,8 +432,11 @@ export function NodeDetail({ node }: { node: Node }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h2 className="truncate text-lg font-medium">{node.name}</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 max-w-full items-center gap-2">
+          <h2 className="truncate text-lg font-medium">{node.name}</h2>
+          <WebsiteLink url={node.website} />
+        </div>
         <Country node={node} />
         <Status node={node} />
         {node.agent_version && (

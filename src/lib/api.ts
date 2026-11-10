@@ -73,6 +73,8 @@ export type Node = {
   hostname?: string
   ip?: string
   remark?: string
+  /** Provider website. Only returned to signed-in callers. */
+  website?: string
 }
 
 export class ApiError extends Error {
