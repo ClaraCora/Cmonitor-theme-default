@@ -1,7 +1,7 @@
 {
   "name": "cmonitor-theme-default",
   "private": true,
-  "version": "1.0.24",
+  "version": "1.0.25",
   "type": "module",
   "engines": {
     "node": ">=24.22.1 <25"
