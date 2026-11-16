@@ -1,6 +1,6 @@
 import { readPreference, savePreference } from "@/lib/storage"
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
-import { Moon, Sun, Wrench } from "lucide-react"
+import { Moon, Sun, Tag, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
@@ -10,10 +10,11 @@ import { flagPath } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
+import { hasTag } from "@/lib/tags"
 
 // `admin_url` is sent only to a signed-in caller, which is what lets the entry
 // exist here without the path ever reaching the public bundle.
-type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; admin_url?: string; visitor_card?: boolean }
+type Me = { authed: boolean; github: boolean; site_name: string; public_page: boolean; admin_url?: string; visitor_card?: boolean; preset_tag?: string }
 
 // Split out because recharts is most of this bundle and the list page draws no
 // chart. The landing page is 242 kB rather than 629 kB (77 kB gzipped against
@@ -67,33 +68,59 @@ function useTheme() {
   return [dark, () => setDark((d) => !d)] as const
 }
 
-/** Country chips with counts, between the summary and the grid: one tap
- * filters the fleet to a region, another clears it. */
-function RegionBar({ nodes, region, onPick }: { nodes: Node[]; region: string | null; onPick: (c: string | null) => void }) {
+type Filters = { region: string | null; tag: string | null; status: string }
+
+function readFilters(): Filters {
+  const p = new URLSearchParams(location.search)
+  const status = p.get("status") ?? "all"
+  const tag = p.get("tag") || null
+  return { region: tag ? null : p.get("region"), tag, status: ["online", "offline", "probe"].includes(status) ? status : "all" }
+}
+
+/** The preset label and countries share one selection, with status alongside. */
+function FleetFilters({ nodes, presetTag, filters, onPick }: {
+  nodes: Node[]
+  presetTag: string
+  filters: Filters
+  onPick: (patch: Partial<Filters>) => void
+}) {
+  const { region, tag, status } = filters
   const counts = new Map<string, number>()
   for (const n of nodes) if (n.country) counts.set(n.country, (counts.get(n.country) ?? 0) + 1)
-  if (counts.size < 2 && !region) return null
   const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   const chip = (active: boolean) =>
-    `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
+    `inline-flex min-h-11 max-w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-h-9 ${
       active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
     }`
   return (
-    <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card p-2 shadow-sm backdrop-blur-md">
-      <button onClick={() => onPick(null)} className={chip(!region)}>
+    <div aria-label="节点筛选" role="group" className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card p-2 shadow-sm backdrop-blur-md">
+      {presetTag && (
+        <button aria-pressed={tag === presetTag} onClick={() => onPick({ tag: tag === presetTag ? null : presetTag, region: null })} className={chip(tag === presetTag)}>
+          <Tag aria-hidden="true" className="size-3.5 shrink-0" />
+          <span className="min-w-0 break-all text-left">{presetTag}</span>
+          <span className="tnum shrink-0">{nodes.filter(n => hasTag(n.tags, presetTag)).length}</span>
+        </button>
+      )}
+      <button aria-pressed={!region && !tag} onClick={() => onPick({ region: null, tag: null })} className={chip(!region && !tag)}>
         全部 <span className="tnum">{nodes.length}</span>
       </button>
       {entries.map(([cc, n]) => (
-        <button key={cc} onClick={() => onPick(region === cc ? null : cc)} className={chip(region === cc)} title={cc}>
+        <button key={cc} aria-pressed={region === cc} onClick={() => onPick({ region: region === cc ? null : cc, tag: null })} className={chip(region === cc)} title={cc}>
           <img
             src={flagPath(cc)}
-            alt={cc}
+            alt=""
             loading="lazy"
             className="h-3 w-[18px] rounded-[2px] object-cover ring-1 ring-black/10"
           />
           {cc} <span className="tnum">{n}</span>
         </button>
       ))}
+      <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <select aria-label="节点状态" value={status} onChange={e => onPick({ status: e.target.value })} className="min-h-11 rounded-lg border bg-background px-2 py-1.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9">
+          <option value="all">全部状态</option><option value="online">在线</option><option value="offline">离线</option><option value="probe">探测异常</option>
+        </select>
+        {(region || tag || status !== "all") && <Button variant="ghost" size="sm" onClick={() => onPick({ region: null, tag: null, status: "all" })}>清除筛选</Button>}
+      </div>
     </div>
   )
 }
@@ -104,15 +131,15 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
-  const readFilters = () => {
-    const p = new URLSearchParams(location.search)
-    return { region: p.get("region"), q: p.get("q") ?? "", status: p.get("status") ?? "all" }
-  }
   const [filters, setFilters] = useState(readFilters)
-  const { region, q, status } = filters
+  const presetTag = me?.preset_tag?.trim() ?? ""
+  const { region, status } = filters
+  // An old bookmark cannot keep filtering by a preset the operator removed.
+  const tag = filters.tag === presetTag && presetTag ? presetTag : null
   const pick = (patch: Partial<typeof filters>) => {
-    const next = { ...filters, ...patch }
+    const next = { ...filters, tag, ...patch }
     const p = new URLSearchParams(location.search)
+    p.delete("q")
     for (const [key, value] of Object.entries(next)) {
       if (!value || value === "all") p.delete(key); else p.set(key, value)
     }
@@ -120,6 +147,12 @@ export default function App() {
     setFilters(next)
   }
   useEffect(() => {
+    // Name/tag search has been removed, including its old bookmark parameter.
+    const p = new URLSearchParams(location.search)
+    if (p.has("q")) {
+      p.delete("q")
+      history.replaceState(history.state, "", `${location.pathname}${p.size ? `?${p}` : ""}`)
+    }
     const sync = () => setFilters(readFilters())
     addEventListener("popstate", sync)
     return () => removeEventListener("popstate", sync)
@@ -157,7 +190,7 @@ export default function App() {
   const sorted = [...(nodes ?? [])].filter((n) => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id)
   const selected = sorted.find((n) => n.id === open)
   const shown = sorted.filter(n => (!region || n.country === region)
-    && (!q.trim() || `${n.name} ${n.tags ?? ""}`.toLocaleLowerCase().includes(q.trim().toLocaleLowerCase()))
+    && (!tag || hasTag(n.tags, tag))
     && (status === "all" || status === "online" && n.online || status === "offline" && !n.online
       || status === "probe" && n.pings?.some(p => p.status === "stale" || p.status === "failed" || p.latency !== null && p.latency < 0)))
 
@@ -242,14 +275,7 @@ export default function App() {
         ) : (
           <>
             <Summary nodes={sorted} stale={stale} />
-            <RegionBar nodes={sorted} region={region} onPick={region => pick({ region })} />
-            <div className="flex flex-wrap items-center gap-2">
-              <input aria-label="搜索节点名称或标签" placeholder="搜索节点名称或标签" value={q} onChange={e => pick({ q: e.target.value })} className="min-w-0 flex-1 rounded-lg border bg-card px-3 py-2 text-sm" />
-              <select aria-label="节点状态" value={status} onChange={e => pick({ status: e.target.value })} className="rounded-lg border bg-card px-3 py-2 text-sm">
-                <option value="all">全部状态</option><option value="online">在线</option><option value="offline">离线</option><option value="probe">探测异常</option>
-              </select>
-              {(region || q || status !== "all") && <Button variant="outline" size="sm" onClick={() => pick({ region: null, q: "", status: "all" })}>清除筛选</Button>}
-            </div>
+            <FleetFilters nodes={sorted} presetTag={presetTag} filters={{ ...filters, tag }} onPick={pick} />
             {shown.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">{sorted.length ? "没有符合筛选条件的节点，可清除筛选后重试" : "还没有节点"}</p>
             ) : (

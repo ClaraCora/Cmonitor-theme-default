@@ -12,6 +12,10 @@ const metric = { uptime: 1000, cpu: 5, load: [0, 0, 0], mem_total: 1024, mem_use
 const nodes = [1, 2].map(id => ({ id, name: `测试节点 ${id}`, sort: id, public: true, online: true, country: 'SG', last_seen: Math.floor(Date.now()/1000), metrics: metric, hostname: 'fixture', ip: `198.51.100.${id}`, ipv4: '', ipv6: '', os: 'Linux', kernel: '', arch: 'x86_64', virt: 'kvm', cpu_name: 'Test CPU', cpu_cores: 2, mem_total: 1024, swap_total: 0, disk_total: 2048, agent_version: '1.2.0', price: 5, currency: 'USD', billing_cycle: 'monthly', expires_at: '2026-12-10', permanent: false, traffic_limit: 1024**3, traffic_mode: 'sum', traffic_reset_day: 1, total_rx: 1000, total_tx: 2000, month_rx: 100, month_tx: 200, month_start: '2026-11-01', day_rx: 10, day_tx: 20, traffic_incomplete: false, token: 'fixture-only', notify: true, muted_until: 0, remark: '', tags: '', website: 'https://example.com', pings: [{id: 1, name: '测试探测', latency: 20, updated_at: Math.floor(Date.now()/1000), samples: [20,21,19]}] }))
 const settings = { site_name: 'Monitor', retention_days: '7', public_page: 'on', visitor_card: 'on', notify_grace: '3', notify_traffic: '80', notify_expiry: '7', notify_disk_percent: '90', notify_disk_minutes: '10', notify_ping_failures: '3', notify_cooldown: '60', notify_login: 'on', notify_telegram_chat: '', notify_telegram_text: '{{title}}', notify_webhook_body: '{"text":"{{message}}"}', password_login: 'on' }
 const me = { authed: true, github: false, password_login: true, hub_version: 'test', site_name: 'Monitor', public_page: true, site: 'https://monitor.example.com', can_provision: true, admin_url: '/clara/nodes', visitor_card: true }
+me.preset_tag = '游走'
+nodes[0].tags = '游走<green>; 1Gbps'
+nodes[1].tags = '游走备用; 500M'
+nodes[1].country = 'US'
 
 async function main() {
   fs.mkdirSync(output, { recursive: true })
@@ -215,8 +219,57 @@ async function main() {
       await page.goto(origin+'/')
       await page.getByText('探测未更新',{exact:true}).first().waitFor()
       assert.equal(await page.getByText('150%',{exact:true}).count(),nodes.length)
-      await page.getByLabel('搜索节点名称或标签').fill('无匹配的节点')
-      await page.getByRole('button',{name:'清除筛选',exact:true}).click()
+      await page.goto(origin+'/?q=无匹配的节点')
+      const filters=page.getByRole('group',{name:'节点筛选',exact:true})
+      await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
+      assert.equal(await page.getByRole('textbox').count(),0,'name and label search has been removed')
+      assert.equal(new URL(page.url()).searchParams.has('q'),false,'legacy search bookmarks cannot hide nodes')
+      assert.equal(await page.locator('.node-card').count(),2)
+      assert.equal(await filters.getByRole('button').first().getByText('游走',{exact:true}).count(),1,'preset is the leftmost chip')
+      const preset=filters.getByRole('button',{name:'游走 1',exact:true})
+      await preset.click()
+      assert.equal(await preset.getAttribute('aria-pressed'),'true')
+      assert.equal(await page.locator('.node-card').count(),1,'exact tag matching excludes 游走备用')
+      assert.equal(new URL(page.url()).searchParams.get('tag'),'游走')
+      await page.reload()
+      await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
+      assert.equal(await preset.getAttribute('aria-pressed'),'true','preset selection survives reload')
+      await page.getByRole('heading',{name:nodes[0].name,exact:true}).click()
+      await page.getByRole('button',{name:'刷新图表',exact:true}).waitFor()
+      await page.goBack()
+      await preset.waitFor()
+      assert.equal(await preset.getAttribute('aria-pressed'),'true','detail back preserves preset selection')
+      await filters.getByRole('button',{name:'US 1',exact:true}).click()
+      assert.equal(new URL(page.url()).searchParams.has('tag'),false,'country selection clears preset')
+      await page.getByRole('heading',{name:nodes[1].name,exact:true}).waitFor()
+      assert.equal(await page.locator('.node-card').count(),1)
+      await preset.click()
+      assert.equal(new URL(page.url()).searchParams.has('region'),false,'preset selection clears country')
+      await filters.getByLabel('节点状态').selectOption('offline')
+      await page.getByText('没有符合筛选条件的节点，可清除筛选后重试',{exact:true}).waitFor()
+      await filters.getByRole('button',{name:'清除筛选',exact:true}).click()
+      assert.equal(await page.locator('.node-card').count(),2)
+
+      me.preset_tag=''
+      await page.goto(origin+'/?tag=游走')
+      await filters.waitFor()
+      await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
+      assert.equal(await filters.getByRole('button',{name:'游走 1',exact:true}).count(),0,'unset preset hides its button')
+      assert.equal(await page.locator('.node-card').count(),2,'removed presets cannot leave a hidden filter')
+      me.preset_tag='长标签'.repeat(10)
+      nodes[0].tags=me.preset_tag+'<green>'
+      await page.goto(origin+'/')
+      await filters.getByRole('button').first().waitFor()
+      for(const width of [320,390]) {
+        await page.setViewportSize({width,height:844})
+        await filters.getByRole('button').first().click()
+        assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,'long preset fits mobile width')
+        const dimensions=await filters.getByRole('button').first().boundingBox()
+        assert(dimensions.height>=44,'mobile preset has a usable touch target')
+        await page.screenshot({animations:'disabled',path:path.join(output,`preset-mobile-${width}.png`)})
+      }
+      me.preset_tag='游走'; nodes[0].tags='游走<green>; 1Gbps'
+      await page.goto(origin+'/')
       await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
       dnsOnly=true
       await page.goto(origin+`/node/${nodes[0].id}?tab=latency`)

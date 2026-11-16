@@ -26,3 +26,8 @@ export function parseTags(value: string | null | undefined): NodeTag[] {
       return { text: match[1].trim(), color }
     })
 }
+
+/** Match a complete visible label, independently of its optional color. */
+export function hasTag(value: string | null | undefined, tag: string): boolean {
+  return tag.trim() !== "" && parseTags(value).some(({ text }) => text === tag.trim())
+}
