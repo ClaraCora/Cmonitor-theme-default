@@ -27,6 +27,7 @@ async function main() {
   const origin = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true, ...(process.env.UX_BROWSER_CHANNEL ? { channel: process.env.UX_BROWSER_CHANNEL } : {}) })
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'zh-CN', hasTouch: true })
+  let dnsOnly = false
   let settingsFail = false, pingFail = false, outage = false, exchangeFail = false
   let exchangeCalls = 0
   const sockets = new Set(), timers = new Set(), writes = [], historyCalls = []
@@ -54,7 +55,8 @@ async function main() {
       else if (pathname.endsWith('/metrics')) {
         historyCalls.push(req.url())
         const now=Math.floor(Date.now()/1000)
-        data={metrics:[{ts:now-60,cpu:5,mem_used:128,disk_used:256,net_rx:10,net_tx:20},{ts:now,cpu:6,mem_used:130,disk_used:256,net_rx:20,net_tx:20}],ping:[{task_id:1,ts:now-60,latency:20},{task_id:1,ts:now,latency:21}],probes:{1:'测试探测'},loss:{}}
+        if (dnsOnly) data={metrics:[],ping:[],probes:{1:'测试探测'},loss:{},stats:{1:{avg_ms:null,p50_ms:null,p95_ms:null,jitter_ms:null,success_count:0,loss_count:0,error_count:4,loss_pct:null}}}
+        else data={metrics:[{ts:now-60,cpu:5,mem_used:128,disk_used:256,net_rx:10,net_tx:20},{ts:now,cpu:6,mem_used:130,disk_used:256,net_rx:20,net_tx:20}],ping:[{task_id:1,ts:now-60,latency:20},{task_id:1,ts:now,latency:21}],probes:{1:'测试探测'},loss:{}}
       }
       else if (pathname === '/api/ping-tasks') data={tasks:[]}
       else if (pathname === '/api/visitor-log') data={visits:[]}
@@ -216,6 +218,12 @@ async function main() {
       await page.getByLabel('搜索节点名称或标签').fill('无匹配的节点')
       await page.getByRole('button',{name:'清除筛选',exact:true}).click()
       await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
+      dnsOnly=true
+      await page.goto(origin+`/node/${nodes[0].id}?tab=latency`)
+      await page.getByText('DNS 错误 4 次（未计入丢包）',{exact:true}).waitFor()
+      await page.getByText('丢包 —',{exact:true}).waitFor()
+      await page.getByText('这段时间没有 TCP 观测，请查看 DNS 错误和当前探测状态。',{exact:true}).waitFor()
+      await page.goto(origin+'/')
     }
     // A denied Storage API must not blank either app (including restore status).
     await context.addInitScript(()=>{

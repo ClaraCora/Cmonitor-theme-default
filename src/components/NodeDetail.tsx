@@ -365,7 +365,7 @@ export function NodeDetail({ node }: { node: Node }) {
   // renders would reset the brush.
   const pingSeries = useMemo(
     () =>
-      [...new Set((data?.ping ?? []).map((p) => p.task_id))]
+      [...new Set([...(data?.ping ?? []).map((p) => p.task_id), ...Object.keys(data?.stats ?? {}).map(Number)])]
         .map((id, index) => {
           // Timeouts are retained: dropping them would draw a probe losing half
           // its packets as an unbroken line, and one that never answered not at
@@ -378,14 +378,13 @@ export function NodeDetail({ node }: { node: Node }) {
           // would report one lost round in thirteen as 50%. Left unrounded, since
           // `Math.round` would render 0.28% and 0.00% as the same badge, and the
           // absence of a badge denotes no loss.
-          const loss = data?.loss?.[id] ?? 0
+          const loss = data?.stats?.[id] ? data.stats[id].loss_pct : data?.loss?.[id] ?? null
           // Height of this probe's full-loss dots on the hidden floor axis,
           // staggered so two probes' outages do not draw over each other.
           const floor = 0.05 + index * 0.12
           const stats = data?.stats?.[id]
           return { p95: stats?.p95_ms ?? null, errors: stats?.error_count ?? 0, id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss, avg, jitter, floor }
-        })
-        .filter((s) => s.points.length > 0),
+        }),
     [data],
   )
 
@@ -592,19 +591,13 @@ export function NodeDetail({ node }: { node: Node }) {
                       <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: style(s.id).stroke }} />
                       <span className="truncate text-sm font-medium">{s.name}</span>
                     </span>
-                    <span
-                      className="tnum mt-1 block truncate text-xs text-muted-foreground"
-                      title="窗口平均延迟 · 丢包率 · 平均波动"
-                    >
-                      {s.avg === null ? "—" : trip(s.avg)}
-                      <span className="mx-1.5 text-border">/</span>P95 {s.p95 === null ? "—" : trip(s.p95)}{s.errors > 0 && ` · DNS 错误 ${s.errors} 次`}
-                      {" · "}
-                      <span className={s.loss > 0 ? "font-medium text-ping-bad" : undefined}>
-                        {s.loss.toFixed(2)}%
-                      </span>
-                      {" · "}
-                      {s.jitter === null ? "—" : s.jitter < 10 ? s.jitter.toFixed(2) : s.jitter < 100 ? s.jitter.toFixed(1) : Math.round(s.jitter)}
+                    <span className="tnum mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>均值 {s.avg === null ? "—" : trip(s.avg)}</span>
+                      <span>P95 {s.p95 === null ? "—" : trip(s.p95)}</span>
+                      <span className={s.loss !== null && s.loss > 0 ? "font-medium text-ping-bad" : undefined}>丢包 {s.loss === null ? "—" : `${s.loss.toFixed(2)}%`}</span>
+                      <span>波动 {s.jitter === null ? "—" : `${s.jitter.toFixed(2)} ms`}</span>
                     </span>
+                    {s.errors > 0 && <span className="mt-1 block text-xs text-muted-foreground">DNS 错误 {s.errors} 次（未计入丢包）</span>}
                   </button>
                 )
               })}
@@ -658,6 +651,8 @@ export function NodeDetail({ node }: { node: Node }) {
             <div className="min-h-0 w-full flex-1 text-muted-foreground">
               {shownProbes.length === 0 ? (
                 <p className="py-8 text-center text-sm">没有选中任何探测</p>
+              ) : shownProbes.every(s => s.points.length === 0) ? (
+                <p className="py-8 text-center text-sm">这段时间没有 TCP 观测，请查看 DNS 错误和当前探测状态。</p>
               ) : (
                 <ResponsiveContainer>
                   <ComposedChart data={pingRows}>
