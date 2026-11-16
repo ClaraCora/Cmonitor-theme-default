@@ -26,6 +26,10 @@ export type LivePing = {
   name: string
   /** Negative means timeout; null means this Hub session has not received a result yet. */
   latency: number | null
+  status?: "pending" | "ok" | "failed" | "stale"
+  interval_sec?: number
+  last_latency?: number | null
+  reason?: "dns_timeout" | "dns_error" | "tcp_timeout" | null
   updated_at: number | null
   /** Up to 20 recent readings; a negative value is a lost probe. */
   samples?: number[]
@@ -55,6 +59,10 @@ export type Node = {
   currency: string
   billing_cycle: string
   expires_at: string | null
+  expires_at_epoch?: number | null
+  billing_period_start_epoch?: number | null
+  valuation_at?: number
+  billing_timezone?: string
   permanent?: boolean
   traffic_incomplete?: boolean
   muted_until?: number
@@ -88,13 +96,27 @@ export class ApiError extends Error {
   }
 }
 
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    ...init,
-    headers: init?.body ? { "content-type": "application/json", ...init?.headers } : init?.headers,
-  })
-  if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText)
-  return res.status === 204 ? (undefined as T) : res.json()
+/** Writes are never replayed automatically: callers can query their result. */
+export async function api<T>(path: string, init: RequestInit = {}, timeoutMs = 15_000): Promise<T> {
+  const controller = new AbortController()
+  let timedOut = false
+  const cancel = () => controller.abort(init.signal?.reason)
+  if (init.signal?.aborted) cancel()
+  else init.signal?.addEventListener("abort", cancel, { once: true })
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, timeoutMs)
+  const headers = new Headers(init.headers)
+  if (typeof init.body === "string" && !headers.has("content-type")) headers.set("content-type", "application/json")
+  try {
+    const res = await fetch(`/api${path}`, { ...init, headers, signal: controller.signal })
+    if (!res.ok) throw new ApiError(res.status, (await res.text()) || res.statusText || `HTTP ${res.status}`)
+    return res.status === 204 ? undefined as T : await res.json()
+  } catch (error) {
+    if (timedOut) throw new Error("请求超时，请重试；写入操作请先刷新确认结果")
+    throw error
+  } finally {
+    clearTimeout(timer)
+    init.signal?.removeEventListener("abort", cancel)
+  }
 }
 
 /**

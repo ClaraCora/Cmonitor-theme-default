@@ -1,3 +1,4 @@
+import { readPreference, savePreference } from "@/lib/storage"
 import { useEffect, useState } from "react"
 import { Clock, Globe, MapPin, Monitor, Shield, User, X } from "lucide-react"
 
@@ -42,7 +43,7 @@ function browserOf(ua: string): string {
  */
 export function VisitorCard() {
   const [visitor, setVisitor] = useState<Visitor | null>(null)
-  const [dismissed, setDismissed] = useState(() => sessionStorage.getItem("visitor-card-off") === "1")
+  const [dismissed, setDismissed] = useState(() => readPreference("visitor-card-off", true) === "1")
   useEffect(() => {
     // Silence on failure: this is a greeting, not a gate, and a status page
     // that cannot greet still works.
@@ -62,7 +63,7 @@ export function VisitorCard() {
     { icon: Clock, text: new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) },
   ]
   const close = () => {
-    sessionStorage.setItem("visitor-card-off", "1")
+    savePreference("visitor-card-off", "1", true)
     setDismissed(true)
   }
 

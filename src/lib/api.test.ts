@@ -14,3 +14,26 @@ for (const patch of [{ load: null }, { load: [1, "bad", 3] }, { cpu: "bad" }, { 
   assert.equal(result[1], node)
 }
 console.log("invalid live reports are isolated")
+
+const { api } = await import("./api.ts")
+const originalFetch = globalThis.fetch
+try {
+  let calls = 0
+  globalThis.fetch = async (_url, init) => {
+    calls++
+    assert.equal(new Headers(init?.headers).get("x-fixture"), "preserved")
+    return new Response(JSON.stringify({ ok: true }), { headers: { "content-type": "application/json" } })
+  }
+  assert.deepEqual(await api("/fixture", { headers: new Headers({ "x-fixture": "preserved" }) }), { ok: true })
+  globalThis.fetch = (_url, init) => new Promise((_resolve, reject) => {
+    const abort = () => reject(new DOMException("aborted", "AbortError"))
+    if (init?.signal?.aborted) abort(); else init?.signal?.addEventListener("abort", abort, { once: true })
+  })
+  await assert.rejects(api("/timeout", { method: "POST", body: "{}" }, 5), /请求超时/)
+  const controller = new AbortController()
+  const request = api("/cancel", { signal: controller.signal })
+  controller.abort()
+  await assert.rejects(request, /aborted/)
+  assert.equal(calls, 1)
+} finally { globalThis.fetch = originalFetch }
+console.log("request deadline, cancellation and Headers compatibility passed")

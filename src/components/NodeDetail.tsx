@@ -1,3 +1,4 @@
+import { probeLabel, type ProbeStats } from "@/lib/probe"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { median } from "d3-array"
 import {
@@ -261,13 +262,34 @@ export function NodeDetail({ node }: { node: Node }) {
   )
   // Each tab keeps its own range: a 7-day trend and a 1-hour trace answer
   // different questions.
-  const [ranges, setRanges] = useState({ resources: 6, latency: 6 })
+  const [ranges, setRanges] = useState(() => {
+    const range = Number(new URLSearchParams(location.search).get("range"))
+    return { resources: tab === "resources" && RANGES_FOR.resources.some(r => r.hours === range) ? range : 6,
+      latency: tab === "latency" && RANGES_FOR.latency.some(r => r.hours === range) ? range : 6 }
+  })
+  const navigateChart = (nextTab: typeof tab, range = ranges[nextTab]) => {
+    const p = new URLSearchParams(location.search)
+    p.set("tab", nextTab); p.set("range", String(range))
+    history.pushState(history.state, "", `${location.pathname}?${p}`)
+    setTab(nextTab); setRanges(all => ({ ...all, [nextTab]: range }))
+  }
+  useEffect(() => {
+    const sync = () => {
+      const p = new URLSearchParams(location.search)
+      const t = p.get("tab") === "latency" ? "latency" : "resources"
+      const range = Number(p.get("range"))
+      setTab(t)
+      setRanges(all => ({ ...all, [t]: RANGES_FOR[t].some(r => r.hours === range) ? range : 6 }))
+    }
+    addEventListener("popstate", sync)
+    return () => removeEventListener("popstate", sync)
+  }, [])
   const hours = ranges[tab]
   const [smooth, setSmooth] = useState(false)
   // Probes switched off. Hiding a slow one is what makes the fast ones readable,
   // as the axis rescales to what remains.
   const [hiddenProbes, setHiddenProbes] = useState<number[]>([])
-  const [data, setData] = useState<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss } | null>(null)
+  const [data, setData] = useState<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss; stats?: Record<string, ProbeStats> } | null>(null)
   const previousHistory = useRef<typeof data>(null)
   // Retained rather than folded into an empty result: a refused request and an
   // empty window are different answers, and the hub has reason to refuse this one
@@ -285,6 +307,7 @@ export function NodeDetail({ node }: { node: Node }) {
 
   useEffect(() => {
     let active = true
+    const controller = new AbortController()
     // The charts must not continue drawing the old range while the new one is in
     // flight.
     // oxlint-disable-next-line react/set-state-in-effect
@@ -308,8 +331,8 @@ export function NodeDetail({ node }: { node: Node }) {
     const load = () => {
       if (running || document.hidden) return
       running = true; setRefreshing(true)
-      api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss }>(
-        `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`,
+      api<{ metrics: Point[]; ping: PingPoint[]; probes: Probes; loss?: Loss; stats?: Record<string, ProbeStats> }>(
+        `/nodes/${node.id}/metrics?hours=${hours}&points=${points}&series=${series}`, { signal: controller.signal },
       ).then((next) => {
         if (!active) return
         setFailed("")
@@ -332,7 +355,7 @@ export function NodeDetail({ node }: { node: Node }) {
     load()
     const timer = setInterval(load, 60_000)
     document.addEventListener("visibilitychange", load)
-    return () => { active = false; clearInterval(timer); document.removeEventListener("visibilitychange", load) }
+    return () => { active = false; controller.abort(); clearInterval(timer); document.removeEventListener("visibilitychange", load) }
   }, [node.id, hours, tab])
 
   const m = node.metrics
@@ -348,16 +371,8 @@ export function NodeDetail({ node }: { node: Node }) {
           // its packets as an unbroken line, and one that never answered not at
           // all.
           const points = (data?.ping ?? []).filter((p) => p.task_id === id)
-          // Card statistics from the buckets themselves: the mean of every
-          // bucket that answered at all.
-          const answered = points.map((p) => p.latency).filter((v): v is number => v !== null)
-          const avg = answered.length ? Math.round(answered.reduce((sum, v) => sum + v, 0) / answered.length) : null
-          // The mean step between one answered bucket and the next -- how
-          // nervous the line is beneath wherever it happens to sit.
-          const jitter =
-            answered.length > 1
-              ? answered.slice(1).reduce((sum, v, i) => sum + Math.abs(v - answered[i]), 0) / (answered.length - 1)
-              : null
+          const avg = data?.stats?.[id]?.avg_ms ?? null
+          const jitter = data?.stats?.[id]?.jitter_ms ?? null
           // Taken from the hub rather than summed from the buckets above, each of
           // which is already a percentage of its own bucket, so averaging them
           // would report one lost round in thirteen as 50%. Left unrounded, since
@@ -367,7 +382,8 @@ export function NodeDetail({ node }: { node: Node }) {
           // Height of this probe's full-loss dots on the hidden floor axis,
           // staggered so two probes' outages do not draw over each other.
           const floor = 0.05 + index * 0.12
-          return { id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss, avg, jitter, floor }
+          const stats = data?.stats?.[id]
+          return { p95: stats?.p95_ms ?? null, errors: stats?.error_count ?? 0, id, name: data?.probes?.[id] ?? `探测 ${id}`, points, loss, avg, jitter, floor }
         })
         .filter((s) => s.points.length > 0),
     [data],
@@ -497,6 +513,7 @@ export function NodeDetail({ node }: { node: Node }) {
         />
       </dl>
 
+      {!!node.pings?.length && <div aria-label="当前探测状态" className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">{node.pings.map(p => <span key={p.id}>{p.name}：{probeLabel(p) ?? (p.latency !== null ? trip(p.latency) : "等待观测")}</span>)}</div>}
       {node.traffic_incomplete && <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">本期流量历史不完整，仅统计已记录用量。管理员可在节点设置中校正。</p>}
       {node.remark && (
         <p className="rounded-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap">{node.remark}</p>
@@ -506,7 +523,7 @@ export function NodeDetail({ node }: { node: Node }) {
         <button type="button" className="float-right rounded-md px-3 py-2 text-sm hover:bg-muted disabled:opacity-50" disabled={refreshing} onClick={() => refreshHistory.current()}>{refreshing ? "刷新中…" : "刷新图表"}</button>
         <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
           {TABS.map((t) => (
-            <Tab key={t.key} active={tab === t.key} onClick={() => setTab(t.key)}>
+            <Tab key={t.key} active={tab === t.key} onClick={() => navigateChart(t.key)}>
               {t.label}
             </Tab>
           ))}
@@ -517,7 +534,7 @@ export function NodeDetail({ node }: { node: Node }) {
               <Tab
                 key={r.hours}
                 active={hours === r.hours}
-                onClick={() => setRanges((all) => ({ ...all, [tab]: r.hours }))}
+                onClick={() => navigateChart(tab, r.hours)}
               >
                 {r.label}
               </Tab>
@@ -580,6 +597,7 @@ export function NodeDetail({ node }: { node: Node }) {
                       title="窗口平均延迟 · 丢包率 · 平均波动"
                     >
                       {s.avg === null ? "—" : trip(s.avg)}
+                      <span className="mx-1.5 text-border">/</span>P95 {s.p95 === null ? "—" : trip(s.p95)}{s.errors > 0 && ` · DNS 错误 ${s.errors} 次`}
                       {" · "}
                       <span className={s.loss > 0 ? "font-medium text-ping-bad" : undefined}>
                         {s.loss.toFixed(2)}%

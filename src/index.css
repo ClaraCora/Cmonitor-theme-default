@@ -235,3 +235,31 @@
 .node-tag[data-color="lime"] { --tag-tone: oklch(0.72 0.17 115); }
 .node-tag[data-color="mint"] { --tag-tone: oklch(0.70 0.11 170); }
 .node-tag[data-color="sky"] { --tag-tone: oklch(0.70 0.12 230); }
+
+/* Text and fills have independent contrast requirements. */
+:root {
+  --ok: #14753a;
+  --warn: #915000;
+  --ping-good: #14753a;
+  --ping-warn: #915000;
+  --ping-bad: #b52232;
+  --muted-foreground: #626775;
+}
+.dark {
+  --ok: oklch(0.75 0.18 149);
+  --warn: oklch(0.77 0.16 72);
+  --ping-good: oklch(0.75 0.18 149);
+  --ping-warn: oklch(0.77 0.16 72);
+  --ping-bad: oklch(0.75 0.18 26);
+  --muted-foreground: #b0b5c2;
+}
+:root:not(.dark) [data-tone="var(--color-metric-cpu)"] { --data-text: #6840ad; }
+:root:not(.dark) [data-tone="var(--color-metric-ram)"] { --data-text: #b0264c; }
+:root:not(.dark) [data-tone="var(--color-metric-disk)"] { --data-text: #915000; }
+:root:not(.dark) [data-tone="var(--color-metric-traffic)"] { --data-text: #08746d; }
+
+:root { --ping-good-fill: oklch(0.72 0.18 149); --ping-warn-fill: oklch(0.75 0.17 70); --ping-bad-fill: oklch(0.62 0.23 27); }
+.dark { --ping-good-fill: oklch(0.75 0.18 149); --ping-warn-fill: oklch(0.77 0.16 72); --ping-bad-fill: oklch(0.66 0.22 26); }
+.bg-ping-good { background-color: var(--ping-good-fill); }
+.bg-ping-warn { background-color: var(--ping-warn-fill); }
+.bg-ping-bad { background-color: var(--ping-bad-fill); }

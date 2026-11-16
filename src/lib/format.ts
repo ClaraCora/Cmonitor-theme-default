@@ -59,7 +59,7 @@ export function trip(v: number): string {
 }
 
 export function percent(used: number, total: number): number {
-  return total > 0 ? Math.min(100, (used / total) * 100) : 0
+  return total > 0 ? Math.max(0, (used / total) * 100) : 0
 }
 
 export function uptime(seconds: number): string {
@@ -71,11 +71,11 @@ export function uptime(seconds: number): string {
 }
 
 /** Whole days until a date, negative once it has passed. */
-export function daysUntil(date?: string | null): number | null {
+export function daysUntil(date?: string | null, expiresAt?: number | null, valuationAt?: number): number | null {
   if (!date) return null
-  const target = new Date(`${date}T00:00:00`).getTime()
+  const target = expiresAt != null ? expiresAt * 1000 : new Date(`${date}T00:00:00Z`).getTime()
   if (Number.isNaN(target)) return null
-  return Math.ceil((target - Date.now()) / 86400000)
+  return Math.ceil((target - (valuationAt !== undefined ? valuationAt * 1000 : Date.now())) / 86400000)
 }
 
 /** Long expiry countdowns use fixed 365-day years, not calendar anniversaries. */

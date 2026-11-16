@@ -1,6 +1,6 @@
 import type { Node } from "./api"
 
-type Plan = Pick<Node, "price" | "currency" | "billing_cycle" | "expires_at" | "permanent">
+type Plan = Pick<Node, "price" | "currency" | "billing_cycle" | "expires_at" | "permanent" | "expires_at_epoch" | "billing_period_start_epoch" | "valuation_at">
 
 // Match the hub's calendar-month renewal periods, including leap years and
 // short months. The last complete period before expiry supplies the daily cost.
@@ -19,20 +19,21 @@ export function remainingValue(node: Plan, now = Date.now()): number | null {
   if (!months || node.permanent || !Number.isFinite(node.price) || node.price <= 0 || !Number.isFinite(now)) return null
   if (!node.expires_at || !/^\d{4}-\d{2}-\d{2}$/.test(node.expires_at)) return null
 
-  // The expiry boundary matches the countdown on NodeCard: local midnight.
-  // Validate the components too: Date silently turns February 30 into March.
-  const end = new Date(`${node.expires_at}T00:00:00`)
   const [year, month, day] = node.expires_at.split("-").map(Number)
-  if (end.getFullYear() !== year || end.getMonth() + 1 !== month || end.getDate() !== day) return null
-  if (end.getTime() <= now) return 0
-
-  const start = new Date(end)
-  start.setMonth(start.getMonth() - months, 1)
+  const date = new Date(`${node.expires_at}T00:00:00Z`)
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) return null
+  const end = node.expires_at_epoch != null ? node.expires_at_epoch * 1000 : date.getTime()
+  const effectiveNow = node.valuation_at !== undefined ? node.valuation_at * 1000 : now
+  if (end <= effectiveNow) return 0
+  const start = new Date(date)
+  start.setUTCMonth(start.getUTCMonth() - months, 1)
   const last = new Date(start)
-  last.setMonth(last.getMonth() + 1, 0)
-  start.setDate(Math.min(day, last.getDate()))
+  last.setUTCMonth(last.getUTCMonth() + 1, 0)
+  start.setUTCDate(Math.min(day, last.getUTCDate()))
+  const periodStart = node.billing_period_start_epoch != null ? node.billing_period_start_epoch * 1000 : start.getTime()
+  if (periodStart >= end) return null
 
-  const value = node.price * ((end.getTime() - now) / (end.getTime() - start.getTime()))
+  const value = node.price * ((end - effectiveNow) / (end - periodStart))
   return Number.isFinite(value) ? value : null
 }
 

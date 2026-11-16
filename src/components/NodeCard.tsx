@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Meter } from "@/components/Meter"
 import { WebsiteLink } from "@/components/WebsiteLink"
 import { api, type Node } from "@/lib/api"
+import { probeLabel, probeStatus, type ProbeStats } from "@/lib/probe"
 import { bytes, CYCLES, daysUntil, expiryText, FOREVER, money, osName, pair, percent, rate, trip, uptime } from "@/lib/format"
 import { flagPath, osIconPath } from "@/lib/icons"
 import { parseTags } from "@/lib/tags"
@@ -87,14 +88,14 @@ export function Country({ node }: { node: Node }) {
 function trafficFoot(node: Node) {
   const suffix = node.traffic_incomplete ? "（已记录，历史不完整）" : ""
   return node.traffic_limit > 0
-    ? `${pair(monthUsage(node), node.traffic_limit)}${suffix}`
+    ? `${pair(monthUsage(node), node.traffic_limit)}${monthUsage(node) > node.traffic_limit ? ` · 超 ${bytes(monthUsage(node) - node.traffic_limit)}` : ""}${suffix}`
     : `${bytes(monthUsage(node))} / ${FOREVER}${suffix}`
 }
 
 // An absent date distinguishes a permanent host from an unset renewal date. A
 // blank corner asserts neither.
 function Expiry({ node }: { node: Node }) {
-  const days = daysUntil(node.expires_at)
+  const days = daysUntil(node.expires_at, node.expires_at_epoch, node.valuation_at)
   if (days === null) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={node.permanent ? "永久有效" : "未设置到期日"}>
@@ -115,7 +116,7 @@ function Expiry({ node }: { node: Node }) {
 /** One probe round, already thinned by the hub: the bucket's median trip and
  * the share of it that timed out. */
 type PingBucket = { task_id: number; ts: number; latency: number | null; loss?: number }
-type PingHistory = { ping: PingBucket[]; loss?: Record<string, number> }
+type PingHistory = { ping: PingBucket[]; loss?: Record<string, number>; stats?: Record<string, ProbeStats> }
 
 // Twenty samples is a shallow window: at a one-minute interval it covers
 // twenty minutes, and a storm half an hour ago is already gone. The detail
@@ -266,7 +267,9 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
           // too old to answer the endpoint at all.
           const samples = ping.samples?.length ? ping.samples.slice(-20) : ping.latency === null ? [] : [ping.latency]
           const ok = (fromHistory ? buckets.map((b) => b.latency) : samples).filter((v): v is number => v !== null && v >= 0)
-          const avg = ok.length > 1 ? Math.round(ok.reduce((sum, v) => sum + v, 0) / ok.length) : null
+          const avg = hist?.stats?.[ping.id]?.avg_ms ?? (!fromHistory && ok.length > 1 ? ok.reduce((sum, v) => sum + v, 0) / ok.length : null)
+          const state = probeStatus(ping)
+          const label = probeLabel(ping)
           // Heights are relative to the row's own peak: against an absolute
           // ceiling a sub-millisecond link flattens into a dotted line that
           // reads as missing data. The 1 guards an all-zero row.
@@ -274,10 +277,10 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
           // The rate needs the window it is taken over. History's figure comes
           // from the raw samples inside the window; the live one from the hub's
           // own 20-sample window, never from the single-sample fallback.
-          const lost = (ping.samples ?? []).filter((s) => s < 0).length
+          const lost = (ping.samples ?? []).filter((s) => s === -1).length
           const lossPct = fromHistory
             ? (hist?.loss?.[ping.id] ?? 0)
-            : lost > 0 ? (100 * lost) / (ping.samples?.length || 1) : 0
+            : lost > 0 ? (100 * lost) / ((ping.samples ?? []).filter(s => s >= -1).length || 1) : 0
           const bars = fromHistory
             ? buckets.map((b, i) => (
                 <PingBar
@@ -289,17 +292,17 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
                 />
               ))
             : samples.map((s, i) => (
-                <PingBar key={i} latency={s < 0 ? null : s} loss={s < 0 ? 100 : 0} peak={peak} title={s < 0 ? "丢包" : trip(s)} />
+                s < -1 ? <span key={i} className="h-[22%] min-w-[2px] flex-1 rounded bg-muted-foreground/40" title="DNS 解析失败，未进行 TCP 观测" /> : <PingBar key={i} latency={s < 0 ? null : s} loss={s < 0 ? 100 : 0} peak={peak} title={s < 0 ? "连接失败" : trip(s)} />
               ))
           return (
             <div key={ping.id} className="min-w-0">
               <div className="flex items-baseline justify-between gap-2">
                 <span className="truncate text-muted-foreground" title={ping.name}>{ping.name}</span>
                 <span className="tnum shrink-0 font-medium">
-                  <span className={text(ping.latency)}>
-                    {ping.latency === null ? "等待" : ping.latency < 0 ? "超时" : trip(ping.latency)}
+                  <span className={state === "stale" || state === "pending" ? "text-muted-foreground" : text(ping.latency)} title={ping.updated_at ? `最近观测 ${new Date(ping.updated_at * 1000).toLocaleString("zh-CN")}${state === "stale" && ping.last_latency != null && ping.last_latency >= 0 ? ` · 上次 ${trip(ping.last_latency)}` : ""}` : "尚未收到探测结果"}>
+                    {label ?? (ping.latency === null ? "等待观测" : trip(ping.latency))}
                   </span>
-                  {avg !== null && (
+                  {avg !== null && state !== "stale" && (
                     <span className="font-normal text-muted-foreground">{` · 均 ${trip(avg)}`}</span>
                   )}
                   {lossPct > 0 && (
@@ -309,7 +312,7 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
                   )}
                 </span>
               </div>
-              <div aria-label={fromHistory ? "最近 2 小时探测" : `最近 ${samples.length} 次探测`} className="mt-1 flex h-3.5 items-end gap-px">
+              <div aria-label={fromHistory ? "最近 2 小时探测" : `最近 ${samples.length} 次探测`} className={cn("mt-1 flex h-3.5 items-end gap-px", state === "stale" && "opacity-35 grayscale")}>
                 {bars}
               </div>
             </div>

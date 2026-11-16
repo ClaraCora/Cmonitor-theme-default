@@ -3,9 +3,10 @@
 // requires no runner, framework or dependency.
 //
 // Nothing imports it, so the bundle never includes it.
-import { axisBytes, axisTop, bytes, cpuName, daysUntil, expiryText, osName, pair, quarters, timeTicks, trip, uptime } from "./format.ts"
+import { percent, axisBytes, axisTop, bytes, cpuName, daysUntil, expiryText, osName, pair, quarters, timeTicks, trip, uptime } from "./format.ts"
 
 let failed = 0
+eq(percent(1500, 1000), 150, "超额比例不能封顶")
 function eq(got: unknown, want: unknown, what: string) {
   const [a, b] = [JSON.stringify(got), JSON.stringify(want)]
   if (a !== b) {
@@ -93,8 +94,8 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
     d.setDate(d.getDate() + days)
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
   }
-  eq(daysUntil(at(10)), 10, "十天后")
-  eq(daysUntil(at(-3)), -3, "已过期为负")
+  eq(daysUntil(at(10), (Date.now() + 10 * 86400000)/1000, Date.now()/1000), 10, "十天后")
+  eq(daysUntil(at(-3), (Date.now() - 3 * 86400000)/1000, Date.now()/1000), -3, "已过期为负")
   eq(daysUntil(null), null, "无到期日")
   eq(daysUntil("不是日期"), null, "无法解析的日期")
 }

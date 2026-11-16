@@ -24,8 +24,8 @@ export function Meter({ label, pct, foot, empty = "—", tone = "var(--color-pri
           {icon}
           {label}
         </span>
-        <span className="tnum text-xs font-medium" style={{ color: tone }}>
-          {pct === null ? empty : `${filled < 10 ? filled.toFixed(1) : filled.toFixed(0)}%`}
+        <span className="tnum text-xs font-medium" style={{ color: pct !== null && pct > 100 ? "var(--destructive)" : `var(--data-text, ${tone})` }} data-tone={tone}>
+          {pct === null ? empty : `${pct < 10 ? pct.toFixed(1) : pct.toFixed(0)}%`}
         </span>
       </div>
       <div className="mt-1.5 flex gap-[3px]" aria-hidden>

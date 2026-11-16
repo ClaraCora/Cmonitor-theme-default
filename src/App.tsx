@@ -1,4 +1,5 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react"
+import { readPreference, savePreference } from "@/lib/storage"
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { Moon, Sun, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
@@ -29,8 +30,9 @@ function useNodeRoute() {
     return match ? Number(match[1]) : null
   }
   const [id, setId] = useState(read)
+  const listScroll = useRef(0)
   useEffect(() => {
-    const sync = () => setId(read())
+    const sync = () => { setId(read()); requestAnimationFrame(() => scrollTo(0, history.state?.scrollY ?? 0)) }
     addEventListener("popstate", sync)
     return () => removeEventListener("popstate", sync)
   }, [])
@@ -39,21 +41,28 @@ function useNodeRoute() {
     // The tab is a query rather than part of the path: it names which view of
     // the node a link opens, and the detail page reads it once on mount.
     (next: number | null, tab?: "latency") => {
-      history.pushState({}, "", next === null ? "/" : `/node/${next}${tab === "latency" ? "?tab=latency" : ""}`)
+      if (id === null) listScroll.current = scrollY
+      history.replaceState({ ...history.state, scrollY }, "")
+      const query = new URLSearchParams(location.search)
+      query.delete("tab"); query.delete("range")
+      if (tab === "latency") query.set("tab", "latency")
+      const suffix = query.size ? `?${query}` : ""
+      const targetScroll = next === null ? listScroll.current : 0
+      history.pushState({ scrollY: targetScroll }, "", `${next === null ? "/" : `/node/${next}`}${suffix}`)
       setId(next)
-      scrollTo(0, 0)
+      requestAnimationFrame(() => scrollTo(0, targetScroll))
     },
   ] as const
 }
 
 function useTheme() {
   const [dark, setDark] = useState(() => {
-    const saved = localStorage.getItem("theme")
+    const saved = readPreference("theme")
     return saved ? saved === "dark" : matchMedia("(prefers-color-scheme: dark)").matches
   })
   useEffect(() => {
     document.documentElement.classList.toggle("dark", dark)
-    localStorage.setItem("theme", dark ? "dark" : "light")
+    savePreference("theme", dark ? "dark" : "light")
   }, [dark])
   return [dark, () => setDark((d) => !d)] as const
 }
@@ -63,7 +72,7 @@ function useTheme() {
 function RegionBar({ nodes, region, onPick }: { nodes: Node[]; region: string | null; onPick: (c: string | null) => void }) {
   const counts = new Map<string, number>()
   for (const n of nodes) if (n.country) counts.set(n.country, (counts.get(n.country) ?? 0) + 1)
-  if (counts.size < 2) return null
+  if (counts.size < 2 && !region) return null
   const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   const chip = (active: boolean) =>
     `inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
@@ -95,7 +104,26 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
-  const [region, setRegion] = useState<string | null>(null)
+  const readFilters = () => {
+    const p = new URLSearchParams(location.search)
+    return { region: p.get("region"), q: p.get("q") ?? "", status: p.get("status") ?? "all" }
+  }
+  const [filters, setFilters] = useState(readFilters)
+  const { region, q, status } = filters
+  const pick = (patch: Partial<typeof filters>) => {
+    const next = { ...filters, ...patch }
+    const p = new URLSearchParams(location.search)
+    for (const [key, value] of Object.entries(next)) {
+      if (!value || value === "all") p.delete(key); else p.set(key, value)
+    }
+    history.replaceState(history.state, "", `${location.pathname}${p.size ? `?${p}` : ""}`)
+    setFilters(next)
+  }
+  useEffect(() => {
+    const sync = () => setFilters(readFilters())
+    addEventListener("popstate", sync)
+    return () => removeEventListener("popstate", sync)
+  }, [])
 
   const loadMe = useCallback(() => {
     // `|| "..."` because an empty message reads as no error: api() falls back to
@@ -128,12 +156,16 @@ export default function App() {
   // the panel rather than here.
   const sorted = [...(nodes ?? [])].filter((n) => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id)
   const selected = sorted.find((n) => n.id === open)
-  const shown = region ? sorted.filter((n) => n.country === region) : sorted
+  const shown = sorted.filter(n => (!region || n.country === region)
+    && (!q.trim() || `${n.name} ${n.tags ?? ""}`.toLocaleLowerCase().includes(q.trim().toLocaleLowerCase()))
+    && (status === "all" || status === "online" && n.online || status === "offline" && !n.online
+      || status === "probe" && n.pings?.some(p => p.status === "stale" || p.status === "failed" || p.latency !== null && p.latency < 0)))
 
   // `/node/{id}` is a page people bookmark and share, so the tab needs the node's
   // name. The site name rather than a fixed string, since the hub lets an operator
   // rename the site.
   useEffect(() => {
+    // oxlint-disable-next-line react/immutability
     document.title = [selected?.name, me?.site_name || "Monitor"].filter(Boolean).join(" · ")
   }, [selected?.name, me?.site_name])
 
@@ -210,9 +242,16 @@ export default function App() {
         ) : (
           <>
             <Summary nodes={sorted} stale={stale} />
-            <RegionBar nodes={sorted} region={region} onPick={setRegion} />
-            {sorted.length === 0 ? (
-              <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
+            <RegionBar nodes={sorted} region={region} onPick={region => pick({ region })} />
+            <div className="flex flex-wrap items-center gap-2">
+              <input aria-label="搜索节点名称或标签" placeholder="搜索节点名称或标签" value={q} onChange={e => pick({ q: e.target.value })} className="min-w-0 flex-1 rounded-lg border bg-card px-3 py-2 text-sm" />
+              <select aria-label="节点状态" value={status} onChange={e => pick({ status: e.target.value })} className="rounded-lg border bg-card px-3 py-2 text-sm">
+                <option value="all">全部状态</option><option value="online">在线</option><option value="offline">离线</option><option value="probe">探测异常</option>
+              </select>
+              {(region || q || status !== "all") && <Button variant="outline" size="sm" onClick={() => pick({ region: null, q: "", status: "all" })}>清除筛选</Button>}
+            </div>
+            {shown.length === 0 ? (
+              <p className="py-16 text-center text-sm text-muted-foreground">{sorted.length ? "没有符合筛选条件的节点，可清除筛选后重试" : "还没有节点"}</p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {shown.map((n: Node) => (

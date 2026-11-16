@@ -61,3 +61,9 @@ for (const rate of [0, -1, NaN, Infinity]) {
 }
 assert.equal(valueInCny([["USD", Number.MAX_VALUE]], { USD: 10 }).total, null, "overflow cannot become a displayed total")
 console.log("remaining value: calendar cycles, exclusions and CNY conversion passed")
+
+const serverPlan = { ...plan, valuation_at: Date.parse("2026-11-01T00:00:00Z") / 1000, expires_at_epoch: at("2026-11-16") / 1000, billing_period_start_epoch: at("2026-10-16") / 1000 }
+for (const zone of ["Asia/Shanghai", "UTC", "America/New_York"]) {
+  process.env.TZ = zone
+  assert.equal(remainingValue(serverPlan, 0), 15, `server valuation is independent of ${zone} and browser clock`)
+}
