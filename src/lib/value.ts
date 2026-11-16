@@ -55,3 +55,16 @@ export function summarizeValue(nodes: Plan[], now = Date.now()) {
     omitted: nodes.length - counted,
   }
 }
+
+/** Return no total until every nonzero currency has a usable conversion. */
+export function valueInCny(totals: [string, number][], rates: Record<string, number> = {}) {
+  let total = 0
+  const missing: string[] = []
+  for (const [currency, amount] of totals) {
+    if (amount === 0) continue
+    const rate = currency === "CNY" ? 1 : rates[currency]
+    if (!Number.isFinite(rate) || rate <= 0) { missing.push(currency); continue }
+    total += amount * rate
+  }
+  return { total: missing.length > 0 || !Number.isFinite(total) ? null : total, missing }
+}

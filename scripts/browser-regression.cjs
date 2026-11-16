@@ -27,10 +27,15 @@ async function main() {
   const origin = `http://127.0.0.1:${server.address().port}`
   const browser = await chromium.launch({ headless: true, ...(process.env.UX_BROWSER_CHANNEL ? { channel: process.env.UX_BROWSER_CHANNEL } : {}) })
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: 'zh-CN', hasTouch: true })
-  let settingsFail = false, pingFail = false, outage = false
+  let settingsFail = false, pingFail = false, outage = false, exchangeFail = false
+  let exchangeCalls = 0
   const sockets = new Set(), timers = new Set(), writes = [], historyCalls = []
   const errors = []
   try {
+    await context.route('**/v1/currencies/cny.min.json', route => {
+      exchangeCalls++
+      return route.fulfill(exchangeFail ? {status:503,body:'unavailable'} : {contentType:'application/json',body:JSON.stringify({date:new Date().toISOString().slice(0,10),cny:{cny:1,usd:0.125,eur:0.1,jpy:20}})})
+    })
     await context.route('**/api/**', async route => {
       const req = route.request(), pathname = new URL(req.url()).pathname
       const fail = body => route.fulfill({status:503,body})
@@ -118,6 +123,41 @@ async function main() {
     } else {
       await page.goto(origin+'/')
       await page.getByText('全部在线',{exact:true}).waitFor()
+      const valueTile=page.getByRole('region',{name:'节点统计'}).locator('[data-slot="card"]').last()
+      await valueTile.getByText('CNY',{exact:true}).waitFor()
+      assert.equal(await valueTile.getByText('USD',{exact:true}).count(),0,'summary shows a single CNY total')
+      const converted=Number((await valueTile.locator('dd').innerText()).replaceAll(',',''))
+      assert(converted>0,'foreign plans are converted to a positive CNY value')
+      const end=new Date(nodes[0].expires_at+'T00:00:00')
+      const start=new Date(end)
+      start.setMonth(start.getMonth()-1)
+      const clock=await page.evaluate(()=>Date.now())
+      const expected=nodes.reduce((sum,node)=>sum+node.price*8*Math.max(0,end.getTime()-clock)/(end.getTime()-start.getTime()),0)
+      assert(Math.abs(converted-expected)<=0.01,'the browser uses the CNY rate rather than the original foreign amount')
+      const loadedCalls=exchangeCalls
+      exchangeFail=true
+      await page.reload()
+      await valueTile.getByText('CNY',{exact:true}).waitFor()
+      assert.equal(exchangeCalls,loadedCalls,'fresh rates are reused from local storage')
+      await page.evaluate(()=>localStorage.removeItem('cmonitor.cny-rates.v1'))
+      await page.reload()
+      await valueTile.getByRole('button',{name:'汇率获取失败，重试',exact:true}).waitFor()
+      assert.equal(await valueTile.locator('dd').count(),0,'failed conversion never displays a partial total')
+      exchangeFail=false
+      await valueTile.getByRole('button',{name:'汇率获取失败，重试',exact:true}).click()
+      await valueTile.getByText('CNY',{exact:true}).waitFor()
+      await page.evaluate(()=>{
+        const key='cmonitor.cny-rates.v1', saved=JSON.parse(localStorage.getItem(key))
+        saved.fetchedAt=Date.now()-7*60*60*1000
+        localStorage.setItem(key,JSON.stringify(saved))
+      })
+      exchangeFail=true
+      await page.reload()
+      await valueTile.getByRole('button',{name:'使用缓存汇率，重试',exact:true}).waitFor()
+      await valueTile.getByText('CNY',{exact:true}).waitFor()
+      exchangeFail=false
+      await valueTile.getByRole('button',{name:'使用缓存汇率，重试',exact:true}).click()
+      await valueTile.getByRole('button',{name:'使用缓存汇率，重试',exact:true}).waitFor({state:'hidden'})
       await page.getByRole('button',{name:'关闭访客信息',exact:true}).waitFor()
       const visitor=page.getByRole('complementary',{name:'来访者信息',exact:true})
       assert.equal(await visitor.evaluate(el=>getComputedStyle(el).position),'fixed')

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 
-import { remainingValue, summarizeValue } from "./value.ts"
+import { remainingValue, summarizeValue, valueInCny } from "./value.ts"
 
 // Fix the valuation clock and timezone: calendar-period tests must not depend
 // on the machine running CI or the wall clock on the day a release is built.
@@ -52,4 +52,12 @@ assert.deepEqual(summarizeValue([], at("2026-11-01")), { totals: [], counted: 0,
 const fractions = summarizeValue(Array.from({ length: 31 }, () => ({ ...plan, price: 0.01 })), at("2026-11-15"))
 assert(Math.abs(fractions.totals[0][1] - 0.01) < 1e-10)
 
-console.log("remaining value: calendar cycles, exclusions and separate currency totals passed")
+assert.deepEqual(valueInCny([["USD", 10], ["CNY", 20], ["EUR", 5], ["JPY", 100]], { USD: 7, EUR: 8, JPY: 0.05 }), { total: 135, missing: [] }, "convert all currencies before summing")
+assert.deepEqual(valueInCny([["CNY", 20]], { CNY: 99 }), { total: 20, missing: [] }, "CNY never needs a rate or changes value")
+assert.deepEqual(valueInCny([["CNY", 20], ["USD", 10]]), { total: null, missing: ["USD"] }, "never show a partial sum as the total")
+assert.deepEqual(valueInCny([["USD", 0]]), { total: 0, missing: [] }, "expired foreign plans do not require exchange rates")
+for (const rate of [0, -1, NaN, Infinity]) {
+  assert.equal(valueInCny([["USD", 10]], { USD: rate }).total, null, "invalid rates cannot create a monetary total")
+}
+assert.equal(valueInCny([["USD", Number.MAX_VALUE]], { USD: 10 }).total, null, "overflow cannot become a displayed total")
+console.log("remaining value: calendar cycles, exclusions and CNY conversion passed")

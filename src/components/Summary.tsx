@@ -4,7 +4,8 @@ import { Card } from "@/components/ui/card"
 import { speedHistory, type Node } from "@/lib/api"
 import { bytes, rate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { summarizeValue } from "@/lib/value"
+import { useExchangeRates } from "@/lib/useExchangeRates"
+import { summarizeValue, valueInCny } from "@/lib/value"
 
 function Tile({ icon: Icon, label, children, className }: {
   icon: typeof Server; label: string; children: React.ReactNode; className?: string
@@ -104,6 +105,10 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
   // is that line's last point.
   const now = speedHistory.at(-1) ?? { rx: 0, tx: 0 }
   const value = summarizeValue(nodes)
+  const needsExchange = value.totals.some(([currency, amount]) => currency !== "CNY" && amount > 0)
+  const exchange = useExchangeRates(needsExchange)
+  const cny = valueInCny(value.totals, exchange.rates?.rates)
+  const valueNote = `单期价格 × 剩余时长 ÷ 计费周期，再统一折算为 CNY。${value.counted} 台计入，${value.omitted} 台未计入。永久、一次性及缺少计费信息的节点未计入。${needsExchange && exchange.rates ? `汇率日期：${exchange.rates.date}；来源：Currency API。` : ""}`
 
   return (
     <section aria-label="节点统计" className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
@@ -149,18 +154,22 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
       </Tile>
 
       <Tile icon={Wallet} label="剩余价值" className="max-lg:col-span-2">
-        {value.totals.length > 0 ? (
-          <dl className="tnum mt-1 flex flex-wrap gap-x-5 gap-y-1 lg:block lg:space-y-1" title="单期价格 × 剩余时长 ÷ 计费周期；各币种分别汇总。永久、一次性及缺少计费信息的节点未计入。">
-            {value.totals.map(([currency, amount]) => (
-              <div key={currency} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-                <dt className="text-xs text-muted-foreground">{currency}</dt>
-                <dd className="min-w-0 break-all text-lg font-semibold">{valueFormat.format(amount)}</dd>
-              </div>
-            ))}
+        {value.counted > 0 && cny.total !== null ? (
+          <dl className="tnum mt-1" title={valueNote}>
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+              <dt className="text-xs text-muted-foreground">CNY</dt>
+              <dd className="min-w-0 break-all text-xl font-semibold">{valueFormat.format(cny.total)}</dd>
+            </div>
           </dl>
         ) : <div className="mt-1 text-xl font-semibold">—</div>}
-        <div className="mt-auto pt-1 text-xs text-muted-foreground">
-          {value.counted === 0 ? "暂无可估算节点" : value.omitted > 0 ? `${value.counted} 台计入 · ${value.omitted} 台未计入` : "按剩余时长估算"}
+        <div className="mt-auto pt-1 text-xs text-muted-foreground" title={valueNote}>
+          {value.counted === 0 ? "暂无可估算节点" : cny.total === null && cny.missing.length === 0 ? "金额超出计算范围" : needsExchange && exchange.failed ? (
+            <button type="button" onClick={exchange.retry} disabled={exchange.loading} className="rounded-sm text-left underline decoration-dotted underline-offset-4 outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-60">
+              {exchange.loading ? "正在获取汇率…" : cny.total === null ? "汇率获取失败，重试" : "使用缓存汇率，重试"}
+            </button>
+          ) : cny.total === null ? (
+            exchange.loading || !exchange.rates ? "正在获取汇率…" : `暂不支持 ${cny.missing.join("、")} 汇率`
+          ) : needsExchange && exchange.rates ? `汇率 ${exchange.rates.date}` : "按剩余时长估算"}
         </div>
       </Tile>
     </section>
