@@ -12,9 +12,9 @@ const metric = { uptime: 1000, cpu: 5, load: [0, 0, 0], mem_total: 1024, mem_use
 const nodes = [1, 2].map(id => ({ id, name: `测试节点 ${id}`, sort: id, public: true, online: true, country: 'SG', last_seen: Math.floor(Date.now()/1000), metrics: metric, hostname: 'fixture', ip: `198.51.100.${id}`, ipv4: '', ipv6: '', os: 'Linux', kernel: '', arch: 'x86_64', virt: 'kvm', cpu_name: 'Test CPU', cpu_cores: 2, mem_total: 1024, swap_total: 0, disk_total: 2048, agent_version: '1.2.0', price: 5, currency: 'USD', billing_cycle: 'monthly', expires_at: '2026-12-10', permanent: false, traffic_limit: 1024**3, traffic_mode: 'sum', traffic_reset_day: 1, total_rx: 1000, total_tx: 2000, month_rx: 100, month_tx: 200, month_start: '2026-11-01', day_rx: 10, day_tx: 20, traffic_incomplete: false, token: 'fixture-only', notify: true, muted_until: 0, remark: '', tags: '', website: 'https://example.com', pings: [{id: 1, name: '测试探测', latency: 20, updated_at: Math.floor(Date.now()/1000), samples: [20,21,19]}] }))
 const settings = { site_name: 'Monitor', retention_days: '7', public_page: 'on', visitor_card: 'on', notify_grace: '3', notify_traffic: '80', notify_expiry: '7', notify_disk_percent: '90', notify_disk_minutes: '10', notify_ping_failures: '3', notify_cooldown: '60', notify_login: 'on', notify_telegram_chat: '', notify_telegram_text: '{{title}}', notify_webhook_body: '{"text":"{{message}}"}', password_login: 'on' }
 const me = { authed: true, github: false, password_login: true, hub_version: 'test', site_name: 'Monitor', public_page: true, site: 'https://monitor.example.com', can_provision: true, admin_url: '/clara/nodes', visitor_card: true }
-me.preset_tag = '游走'
+me.preset_tag = '游走;备用;未分配'
 nodes[0].tags = '游走<green>; 1Gbps'
-nodes[1].tags = '游走备用; 500M'
+nodes[1].tags = '游走备用; 500M; 备用<amber>'
 nodes[1].country = 'US'
 
 async function main() {
@@ -226,8 +226,18 @@ async function main() {
       assert.equal(new URL(page.url()).searchParams.has('q'),false,'legacy search bookmarks cannot hide nodes')
       assert.equal(await page.locator('.node-card').count(),2)
       assert.equal(await filters.getByRole('button').first().getByText('游走',{exact:true}).count(),1,'preset is the leftmost chip')
+      assert.deepEqual((await filters.getByRole('button').allTextContents()).slice(0,4),['游走1','备用1','未分配0','全部 2'],'preset buttons precede countries in configured order')
       const preset=filters.getByRole('button',{name:'游走 1',exact:true})
+      const backup=filters.getByRole('button',{name:'备用 1',exact:true})
+      await backup.click()
+      await page.getByRole('heading',{name:nodes[1].name,exact:true}).waitFor()
+      assert.equal(await page.locator('.node-card').count(),1,'each preset filters its own exact label')
+      assert.equal(new URL(page.url()).searchParams.get('tag'),'备用')
+      await page.reload()
+      await backup.waitFor()
+      assert.equal(await backup.getAttribute('aria-pressed'),'true','second preset survives reload')
       await preset.click()
+      assert.equal(await backup.getAttribute('aria-pressed'),'false','switching presets replaces the selection')
       assert.equal(await preset.getAttribute('aria-pressed'),'true')
       assert.equal(await page.locator('.node-card').count(),1,'exact tag matching excludes 游走备用')
       assert.equal(new URL(page.url()).searchParams.get('tag'),'游走')
@@ -249,15 +259,24 @@ async function main() {
       await page.getByText('没有符合筛选条件的节点，可清除筛选后重试',{exact:true}).waitFor()
       await filters.getByRole('button',{name:'清除筛选',exact:true}).click()
       assert.equal(await page.locator('.node-card').count(),2)
+      await filters.getByRole('button',{name:'未分配 0',exact:true}).click()
+      await page.getByText('没有符合筛选条件的节点，可清除筛选后重试',{exact:true}).waitFor()
+      await filters.getByRole('button',{name:'未分配 0',exact:true}).click()
+      assert.equal(await page.locator('.node-card').count(),2,'clicking the selected preset clears it')
 
-      me.preset_tag=''
+      me.preset_tag='备用'
       await page.goto(origin+'/?tag=游走')
       await filters.waitFor()
       await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
       assert.equal(await filters.getByRole('button',{name:'游走 1',exact:true}).count(),0,'unset preset hides its button')
       assert.equal(await page.locator('.node-card').count(),2,'removed presets cannot leave a hidden filter')
-      me.preset_tag='长标签'.repeat(10)
-      nodes[0].tags=me.preset_tag+'<green>'
+      me.preset_tag=''
+      await page.goto(origin+'/')
+      await filters.waitFor()
+      assert.equal(await filters.getByRole('button').count(),3,'empty configuration hides all preset buttons')
+      const longPreset='长标签'.repeat(10)
+      me.preset_tag=[longPreset,...Array.from({length:11},(_,i)=>`预设标签${i+2}`)].join(';')
+      nodes[0].tags=longPreset+'<green>'
       await page.goto(origin+'/')
       await filters.getByRole('button').first().waitFor()
       for(const width of [320,390]) {
@@ -268,9 +287,12 @@ async function main() {
         assert(dimensions.height>=44,'mobile preset has a usable touch target')
         await page.screenshot({animations:'disabled',path:path.join(output,`preset-mobile-${width}.png`)})
       }
+      await page.setViewportSize({width:1440,height:1000})
+      await page.screenshot({animations:'disabled',path:path.join(output,'multiple-presets-desktop.png')})
       me.preset_tag='游走'; nodes[0].tags='游走<green>; 1Gbps'
       await page.goto(origin+'/')
       await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
+      assert.equal(await filters.getByRole('button',{name:'游走 1',exact:true}).count(),1,'existing single-preset settings remain compatible')
       dnsOnly=true
       await page.goto(origin+`/node/${nodes[0].id}?tab=latency`)
       await page.getByText('DNS 错误 4 次（未计入丢包）',{exact:true}).waitFor()

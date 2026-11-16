@@ -10,7 +10,7 @@ import { flagPath } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
-import { hasTag } from "@/lib/tags"
+import { hasTag, parsePresetTags } from "@/lib/tags"
 
 // `admin_url` is sent only to a signed-in caller, which is what lets the entry
 // exist here without the path ever reaching the public bundle.
@@ -77,10 +77,10 @@ function readFilters(): Filters {
   return { region: tag ? null : p.get("region"), tag, status: ["online", "offline", "probe"].includes(status) ? status : "all" }
 }
 
-/** The preset label and countries share one selection, with status alongside. */
-function FleetFilters({ nodes, presetTag, filters, onPick }: {
+/** Preset labels and countries share one selection, with status alongside. */
+function FleetFilters({ nodes, presetTags, filters, onPick }: {
   nodes: Node[]
-  presetTag: string
+  presetTags: string[]
   filters: Filters
   onPick: (patch: Partial<Filters>) => void
 }) {
@@ -94,13 +94,13 @@ function FleetFilters({ nodes, presetTag, filters, onPick }: {
     }`
   return (
     <div aria-label="节点筛选" role="group" className="flex flex-wrap items-center gap-1.5 rounded-2xl border bg-card p-2 shadow-sm backdrop-blur-md">
-      {presetTag && (
-        <button aria-pressed={tag === presetTag} onClick={() => onPick({ tag: tag === presetTag ? null : presetTag, region: null })} className={chip(tag === presetTag)}>
+      {presetTags.map(presetTag => (
+        <button key={presetTag} aria-pressed={tag === presetTag} onClick={() => onPick({ tag: tag === presetTag ? null : presetTag, region: null })} className={chip(tag === presetTag)}>
           <Tag aria-hidden="true" className="size-3.5 shrink-0" />
           <span className="min-w-0 break-all text-left">{presetTag}</span>
           <span className="tnum shrink-0">{nodes.filter(n => hasTag(n.tags, presetTag)).length}</span>
         </button>
-      )}
+      ))}
       <button aria-pressed={!region && !tag} onClick={() => onPick({ region: null, tag: null })} className={chip(!region && !tag)}>
         全部 <span className="tnum">{nodes.length}</span>
       </button>
@@ -132,10 +132,10 @@ export default function App() {
   const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
   const [filters, setFilters] = useState(readFilters)
-  const presetTag = me?.preset_tag?.trim() ?? ""
+  const presetTags = parsePresetTags(me?.preset_tag)
   const { region, status } = filters
   // An old bookmark cannot keep filtering by a preset the operator removed.
-  const tag = filters.tag === presetTag && presetTag ? presetTag : null
+  const tag = filters.tag && presetTags.includes(filters.tag) ? filters.tag : null
   const pick = (patch: Partial<typeof filters>) => {
     const next = { ...filters, tag, ...patch }
     const p = new URLSearchParams(location.search)
@@ -275,7 +275,7 @@ export default function App() {
         ) : (
           <>
             <Summary nodes={sorted} stale={stale} />
-            <FleetFilters nodes={sorted} presetTag={presetTag} filters={{ ...filters, tag }} onPick={pick} />
+            <FleetFilters nodes={sorted} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
             {shown.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">{sorted.length ? "没有符合筛选条件的节点，可清除筛选后重试" : "还没有节点"}</p>
             ) : (

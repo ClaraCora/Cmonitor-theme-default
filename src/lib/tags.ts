@@ -31,3 +31,8 @@ export function parseTags(value: string | null | undefined): NodeTag[] {
 export function hasTag(value: string | null | undefined, tag: string): boolean {
   return tag.trim() !== "" && parseTags(value).some(({ text }) => text === tag.trim())
 }
+
+/** Presets are plain label names, in the operator's order; colors belong to nodes. */
+export function parsePresetTags(value: string | null | undefined): string[] {
+  return [...new Set((value ?? "").split(/[;；\r\n]/).map(tag => tag.trim()).filter(Boolean))]
+}

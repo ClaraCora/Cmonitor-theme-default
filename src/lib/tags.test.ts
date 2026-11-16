@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import assert from "node:assert/strict"
-import { hasTag, parseTags, RADIX_COLORS } from "./tags.ts"
+import { hasTag, parsePresetTags, parseTags, RADIX_COLORS } from "./tags.ts"
 
 assert.deepEqual(parseTags("二网精品; 1Gbps<green>; 21日<AMBER>"), [
   { text: "二网精品" },
@@ -16,6 +16,11 @@ assert(!hasTag("游走备用;非游走", "游走"), "preset labels never match a
 assert(!hasTag("游走<unknown>", "游走"), "unknown color suffixes remain part of the visible label")
 assert(!hasTag(undefined, "游走"))
 assert(!hasTag("游走", ""))
+assert.deepEqual(parsePresetTags(" 游走 ; 主力\r\n备用；游走;; 主力\n "), ["游走", "主力", "备用"])
+assert.deepEqual(parsePresetTags("游走"), ["游走"], "single-label settings remain compatible")
+assert.deepEqual(parsePresetTags(" ;；\n\r "), [])
+assert.deepEqual(parsePresetTags(undefined), [])
+assert.deepEqual(parsePresetTags("US;us"), ["US", "us"], "label matching is case sensitive")
 for (const color of RADIX_COLORS) {
   assert.deepEqual(parseTags(`节点<${color}>`), [{ text: "节点", color }])
 }
