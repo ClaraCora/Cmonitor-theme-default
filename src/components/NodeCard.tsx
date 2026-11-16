@@ -256,7 +256,7 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
         e.stopPropagation()
         onOpenLatency()
       }}
-      className="-mx-2 mt-4 cursor-pointer rounded-b-lg border-t px-2 pt-3 text-xs transition-colors hover:bg-muted/60"
+      className="-mx-2 mt-4 cursor-pointer rounded-b-lg border-t px-2 pt-3 text-xs transition-colors hover:bg-muted/60 sm:flex sm:flex-1 sm:flex-col sm:justify-center"
     >
       <div className="space-y-2">
         {pings.map((ping) => {
@@ -447,7 +447,7 @@ export function NodeCard({ node, onOpen, onOpenLatency }: { node: Node; onOpen: 
           </p>
         )}
       </div>
-      <div className="node-card-latency min-w-0 flex-1">
+      <div className="node-card-latency min-w-0 flex-1 sm:flex sm:flex-col">
         <Latency node={node} onOpenLatency={onOpenLatency} />
       </div>
       {/* Live state left, renewal date right; the plan's price sits with the tags. */}

@@ -171,7 +171,8 @@
 @media (min-width: 40rem) {
   /* Two probe rows: each has a 1rem label, .25rem gap and .875rem strip;
      add the .5rem row gap and the existing section margin, padding and border.
-     Extra space stays below the probes; the strips never stretch vertically. */
+     Extra space centers the probe group below its fixed divider; individual
+     strips keep their natural height. */
   .node-card-latency { min-block-size: calc(6.5rem + 1px); }
 
   /* Reserve one badge row even for a node without a price or tags. */
