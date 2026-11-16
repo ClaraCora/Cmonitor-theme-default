@@ -1,15 +1,16 @@
-import { Activity, ArrowDown, ArrowDownUp, ArrowUp, Gauge, Server } from "lucide-react"
+import { Activity, ArrowDown, ArrowDownUp, ArrowUp, Gauge, Server, Wallet } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
 import { speedHistory, type Node } from "@/lib/api"
 import { bytes, rate } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { summarizeValue } from "@/lib/value"
 
-function Tile({ icon: Icon, label, children }: {
-  icon: typeof Server; label: string; children: React.ReactNode
+function Tile({ icon: Icon, label, children, className }: {
+  icon: typeof Server; label: string; children: React.ReactNode; className?: string
 }) {
   return (
-    <Card className="gap-0 p-3">
+    <Card className={cn("@container min-w-0 gap-0 p-3", className)}>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         <Icon className="size-3.5" />
         {label}
@@ -21,17 +22,17 @@ function Tile({ icon: Icon, label, children }: {
 
 /**
  * In and out side by side, the form every traffic figure on this page takes.
- * Stacked below sm, where two tiles share a phone's width and "23.3 MB" has
- * roughly 70px available.
+ * Stack when the tile itself is narrow, including the five-column desktop
+ * layout; viewport width alone no longer tells us whether both figures fit.
  */
 function Flow({ down, up, className }: { down: string; up: string; className?: string }) {
   return (
-    <div className={cn("tnum grid grid-cols-1 gap-x-2 sm:grid-cols-2", className)}>
-      <span className="inline-flex items-center gap-1">
+    <div className={cn("tnum grid grid-cols-1 gap-x-2 @[12rem]:grid-cols-2", className)}>
+      <span className="inline-flex min-w-0 items-center gap-1">
         <ArrowDown className="size-3 shrink-0 text-muted-foreground" />
         {down}
       </span>
-      <span className="inline-flex items-center gap-1">
+      <span className="inline-flex min-w-0 items-center gap-1">
         <ArrowUp className="size-3 shrink-0 text-muted-foreground" />
         {up}
       </span>
@@ -46,15 +47,15 @@ function RateRow({ node }: { node: Node }) {
   return (
     // Below sm the name takes its own line: two rates leave it only a sliver
     // of a half-width tile, and a name nobody can read is worse than a wrap.
-    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs">
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs sm:grid sm:grid-cols-[minmax(0,1fr)_auto_auto]">
       <span className="min-w-0 truncate max-sm:basis-full" title={node.name}>
         {node.name}
       </span>
-      <span className="tnum ml-auto inline-flex shrink-0 items-center gap-0.5 font-semibold max-sm:ml-0">
+      <span className="tnum inline-flex items-center gap-0.5 whitespace-nowrap font-semibold">
         <ArrowDown className="size-3 text-muted-foreground" />
         {rate(m.net_rx)}
       </span>
-      <span className="tnum inline-flex shrink-0 items-center gap-0.5 font-semibold">
+      <span className="tnum inline-flex items-center gap-0.5 whitespace-nowrap font-semibold">
         <ArrowUp className="size-3 text-muted-foreground" />
         {rate(m.net_tx)}
       </span>
@@ -87,6 +88,8 @@ function Spark({ series }: { series: { values: number[]; className: string }[] }
   )
 }
 
+const valueFormat = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
 export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boolean }) {
   const online = nodes.filter((n) => n.online)
   const sum = (pick: (n: Node) => number) => nodes.reduce((total, n) => total + pick(n), 0)
@@ -100,9 +103,10 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
   // The same push produced `nodes` and this sample, so the figure above the line
   // is that line's last point.
   const now = speedHistory.at(-1) ?? { rx: 0, tx: 0 }
+  const value = summarizeValue(nodes)
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <section aria-label="节点统计" className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,0.6fr)_minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
       <Tile icon={Server} label="节点">
         <div className="tnum mt-1 text-xl font-semibold">
           {online.length} / {nodes.length}
@@ -143,6 +147,22 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
           />
         </div>
       </Tile>
-    </div>
+
+      <Tile icon={Wallet} label="剩余价值" className="max-lg:col-span-2">
+        {value.totals.length > 0 ? (
+          <dl className="tnum mt-1 flex flex-wrap gap-x-5 gap-y-1 lg:block lg:space-y-1" title="单期价格 × 剩余时长 ÷ 计费周期；各币种分别汇总。永久、一次性及缺少计费信息的节点未计入。">
+            {value.totals.map(([currency, amount]) => (
+              <div key={currency} className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+                <dt className="text-xs text-muted-foreground">{currency}</dt>
+                <dd className="min-w-0 break-all text-lg font-semibold">{valueFormat.format(amount)}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : <div className="mt-1 text-xl font-semibold">—</div>}
+        <div className="mt-auto pt-1 text-xs text-muted-foreground">
+          {value.counted === 0 ? "暂无可估算节点" : value.omitted > 0 ? `${value.counted} 台计入 · ${value.omitted} 台未计入` : "按剩余时长估算"}
+        </div>
+      </Tile>
+    </section>
   )
 }
