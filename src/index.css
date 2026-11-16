@@ -165,6 +165,32 @@
 /* Tabular figures keep live numbers from shifting as they update. */
 .tnum { font-variant-numeric: tabular-nums; }
 
+/* On a phone each card follows its content, including an absent plan. */
+.node-card-tags-empty { display: none; }
+
+@media (min-width: 40rem) {
+  /* Two probe rows: each has a 1rem label, .25rem gap and .875rem strip;
+     add the .5rem row gap and the existing section margin, padding and border.
+     Extra space stays below the probes; the strips never stretch vertically. */
+  .node-card-latency { min-block-size: calc(6.5rem + 1px); }
+
+  /* Reserve one badge row even for a node without a price or tags. */
+  .node-card-tags { min-block-size: calc(2.125rem + 1px); }
+  .node-card-tags-empty { display: flex; }
+
+  @supports (grid-template-rows: subgrid) {
+    /* Share four content-sized tracks with the cards in this grid row:
+       summary, probes, status and plan. Wrapped tags grow the plan track for
+       every neighbour, keeping both status lines and dividers aligned. */
+    .node-card {
+      display: grid;
+      grid-row: span 4;
+      grid-template-rows: subgrid;
+      row-gap: 0;
+    }
+  }
+}
+
 /* Colored labels keep the theme's quiet surface. The Radix color name selects a
    hue; color-mix supplies readable light and dark variants against the current
    card instead of baking in one-mode foreground/background pairs. */

@@ -214,7 +214,7 @@ export default function App() {
             {sorted.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">还没有节点</p>
             ) : (
-              <div className="grid items-start gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {shown.map((n: Node) => (
                   <NodeCard key={n.id} node={n} onOpen={() => go(n.id)} onOpenLatency={() => go(n.id, "latency")} />
                 ))}
