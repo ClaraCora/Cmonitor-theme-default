@@ -34,6 +34,10 @@ eq(pair(300 * 1024 ** 2, 3 * 1024 ** 3), "300 MB / 3.00 GB", "跨单位各写各
 // sub-millisecond handshake and reads as one, not as a stopped clock.
 eq(trip(0), "<1 ms", "亚毫秒握手不写成 0")
 eq(trip(37), "37 ms", "整毫秒照常")
+eq(trip(1.8061224489795917), "1.81 ms", "原始样本均值限制小数位")
+eq(trip(29.375), "29.4 ms", "两位整数的延迟显示一位小数")
+eq(trip(138.17084731372549), "138 ms", "三位整数的延迟取整显示")
+eq(trip(0.25), "<1 ms", "亚毫秒均值保持语义")
 
 // axisBytes: ticks under three digits keep one decimal, or a narrow axis repeats
 // a label; a trailing .0 adds nothing.

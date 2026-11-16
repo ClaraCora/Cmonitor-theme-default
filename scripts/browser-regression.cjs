@@ -56,7 +56,7 @@ async function main() {
         historyCalls.push(req.url())
         const now=Math.floor(Date.now()/1000)
         if (dnsOnly) data={metrics:[],ping:[],probes:{1:'测试探测'},loss:{},stats:{1:{avg_ms:null,p50_ms:null,p95_ms:null,jitter_ms:null,success_count:0,loss_count:0,error_count:4,loss_pct:null}}}
-        else data={metrics:[{ts:now-60,cpu:5,mem_used:128,disk_used:256,net_rx:10,net_tx:20},{ts:now,cpu:6,mem_used:130,disk_used:256,net_rx:20,net_tx:20}],ping:[{task_id:1,ts:now-60,latency:20},{task_id:1,ts:now,latency:21}],probes:{1:'测试探测'},loss:{}}
+        else data={metrics:[{ts:now-60,cpu:5,mem_used:128,disk_used:256,net_rx:10,net_tx:20},{ts:now,cpu:6,mem_used:130,disk_used:256,net_rx:20,net_tx:20}],ping:[{task_id:1,ts:now-60,latency:20},{task_id:1,ts:now,latency:21}],probes:{1:'测试探测'},loss:{},stats:{1:{avg_ms:1.8061224489795917,p50_ms:1,p95_ms:3,jitter_ms:0.8,success_count:2,loss_count:0,error_count:0,loss_pct:0}}}
       }
       else if (pathname === '/api/ping-tasks') data={tasks:[]}
       else if (pathname === '/api/visitor-log') data={visits:[]}

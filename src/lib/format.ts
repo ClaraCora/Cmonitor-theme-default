@@ -55,7 +55,11 @@ export function rate(n: number): string {
  * clock, not the network: probes truncate to milliseconds, so a
  * sub-millisecond answer arrives as 0 and is read as one. */
 export function trip(v: number): string {
-  return v === 0 ? "<1 ms" : `${v} ms`
+  if (!Number.isFinite(v) || v < 0) return "—"
+  if (v < 1) return "<1 ms"
+  // Raw sample means can repeat indefinitely; display at most two decimals.
+  const digits = v < 10 ? 2 : v < 100 ? 1 : 0
+  return `${Number(v.toFixed(digits))} ms`
 }
 
 export function percent(used: number, total: number): number {
