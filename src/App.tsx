@@ -141,7 +141,7 @@ export default function App() {
     const p = new URLSearchParams(location.search)
     p.delete("q")
     for (const [key, value] of Object.entries(next)) {
-      if (!value || value === "all") p.delete(key); else p.set(key, value)
+      if (!value || (key === "status" && value === "all")) p.delete(key); else p.set(key, value)
     }
     history.replaceState(history.state, "", `${location.pathname}${p.size ? `?${p}` : ""}`)
     setFilters(next)
@@ -276,6 +276,9 @@ export default function App() {
           <>
             <Summary nodes={sorted} stale={stale} />
             <FleetFilters nodes={sorted} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
+            {(region || tag || status !== "all") && (
+              <p className="text-sm text-muted-foreground" role="status">已显示 {shown.length} / {sorted.length} 台 · 顶部统计为全部节点</p>
+            )}
             {shown.length === 0 ? (
               <p className="py-16 text-center text-sm text-muted-foreground">{sorted.length ? "没有符合筛选条件的节点，可清除筛选后重试" : "还没有节点"}</p>
             ) : (

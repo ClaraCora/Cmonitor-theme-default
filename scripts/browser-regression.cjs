@@ -264,6 +264,15 @@ async function main() {
       await filters.getByRole('button',{name:'未分配 0',exact:true}).click()
       assert.equal(await page.locator('.node-card').count(),2,'clicking the selected preset clears it')
 
+      me.preset_tag='all'
+      nodes[0].tags+=';all'
+      await page.goto(origin+'/')
+      await filters.getByRole('button',{name:'all 1',exact:true}).click()
+      assert.equal(new URL(page.url()).searchParams.get('tag'),'all')
+      await page.reload()
+      await page.getByText('已显示 1 / 2 台 · 顶部统计为全部节点',{exact:true}).waitFor()
+      await page.getByText('估算说明',{exact:true}).click()
+      assert.equal(await page.locator('details[open]').count(),1)
       me.preset_tag='备用'
       await page.goto(origin+'/?tag=游走')
       await filters.waitFor()

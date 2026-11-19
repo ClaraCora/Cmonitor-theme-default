@@ -171,6 +171,10 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
             exchange.loading || !exchange.rates ? "正在获取汇率…" : `暂不支持 ${cny.missing.join("、")} 汇率`
           ) : needsExchange && exchange.rates ? `汇率 ${exchange.rates.date}` : "按剩余时长估算"}
         </div>
+        <details className="mt-1 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer rounded py-1 focus-visible:outline-ring">估算说明</summary>
+          <p className="mt-1 leading-relaxed">{valueNote}</p>
+        </details>
       </Tile>
     </section>
   )
