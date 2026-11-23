@@ -30,13 +30,13 @@
 .weekly-grid span { position: absolute; right: calc(100% + .2rem); transform: translateY(-50%); }
 .weekly-days { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); }
 .weekly-days button { min-width: 0; position: relative; border-radius: .25rem; cursor: pointer; }
-.weekly-days button:is(:hover, [aria-pressed=true]) { background: var(--map-heading-hover); }
+.weekly-days button:is(:hover, [aria-expanded=true]) { background: var(--map-heading-hover); }
 .weekly-traffic button:focus-visible { outline: 2px solid var(--map-highlight); outline-offset: 1px; }
 .weekly-stack { position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:58%; max-width:2rem; }
 .weekly-amount { position:absolute; bottom:calc(100% + .1rem); left:50%; transform:translateX(-50%); font-weight:600; white-space:nowrap; }
 .weekly-fill { display:flex; flex-direction:column; width:100%; height:100%; border-radius:.18rem .18rem 0 0; overflow:hidden; }
 .weekly-date { position:absolute; top:calc(100% + .25rem); left:50%; transform:translateX(-50%); white-space:nowrap; color:var(--map-secondary); }
-.weekly-details, .weekly-note { margin-top:.45rem; font-size:.75rem; line-height:1.6; overflow-wrap:anywhere; }
+.weekly-note { margin-top:.45rem; font-size:.75rem; line-height:1.6; overflow-wrap:anywhere; }
 .weekly-note { color:var(--map-secondary); }
 .weekly-note button { color:var(--map-text); text-decoration:underline; text-underline-offset: .15em; padding:.2rem; cursor:pointer; }
 @media (min-width:1800px) and (min-height:640px) {
