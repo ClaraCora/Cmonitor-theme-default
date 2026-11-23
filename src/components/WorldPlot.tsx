@@ -11,8 +11,7 @@ export default function WorldPlot({ entries, selected, active, onHover, onPick }
   onHover: (code: string | null) => void
   onPick: (code: string) => void
 }) {
-  // The accompanying buttons provide the same selection with a full-size
-  // keyboard and touch target, including for islands too close to separate.
+  // The dashboard's country filters offer the same selection by keyboard or touch.
   return <svg viewBox={WORLD_VIEW_BOX} className="node-world" aria-hidden="true" focusable="false" onMouseLeave={() => onHover(null)}>
     <g className="node-world-land" fillRule="evenodd">{land}</g>
     {entries.map(([code]) => <path key={code} d={areas.get(code)} fillRule="evenodd" className="node-world-coverage"

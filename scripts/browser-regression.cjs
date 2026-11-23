@@ -55,6 +55,7 @@ async function main() {
       let data = {}
       if (pathname === '/api/me') data = me
       else if (pathname === '/api/nodes') data = {nodes,admin:true}
+      else if (pathname === '/api/traffic/weekly') data = require('./weekly-traffic-regression.cjs').weeklyFixture()
       else if (pathname === '/api/settings') data = settings
       else if (pathname.endsWith('/metrics')) {
         historyCalls.push(req.url())
