@@ -44,6 +44,86 @@ async function expectNames(container, expected) {
   assert.deepEqual(names, expected)
 }
 
+async function checkNodeMap(page, output) {
+  const map = page.getByRole('region', {name:'节点地图', exact:true})
+  const toggle = map.getByRole('button', {name:'节点地图', exact:true})
+  const region = code => map.locator(`button[data-map-region="${code}"]`)
+  const marker = code => map.locator(`g[data-map-marker="${code}"]`)
+  const filters = page.getByRole('group', {name:'节点筛选'})
+  const cards = page.locator('.node-card')
+  const query = () => new URL(page.url()).searchParams
+  await region('JP').waitFor()
+  await marker('JP').waitFor()
+  assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
+  assert.match(await region('JP').getAttribute('aria-label'), /日本.*2\s*台/)
+  await map.getByText(/1\s*台未标注地区/).waitFor()
+  assert.equal(await map.locator('button[data-map-region]').count(), 7)
+  assert.equal(await marker('FR').count(), 0, 'a private-only country never creates a coverage marker')
+  assert.equal(await region('FR').count(), 0)
+  assert.equal(await cards.count(), 9)
+
+  const mapBox = await map.boundingBox()
+  const edge = Math.max(...await cards.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().right)))
+  assert(mapBox.x >= edge, 'the map occupies the gutter to the right of every node card')
+  await expectClearGutter(page, map)
+  await page.screenshot({animations:'disabled',path:path.join(output,'node-map-desktop.png')})
+
+  // Keyboard selection replaces a preset and retains the current status filter.
+  await filters.getByRole('button', {name:/游走/}).click()
+  await filters.getByLabel('节点状态').selectOption('offline')
+  await region('JP').focus()
+  await page.keyboard.press('Enter')
+  await page.getByRole('heading', {name:'东京 · 备用',exact:true}).waitFor()
+  assert.equal(await cards.count(), 1)
+  assert.equal(query().get('region'), 'JP')
+  assert.equal(query().get('status'), 'offline')
+  assert.equal(query().get('tag'), null)
+  assert.equal(await filters.getByRole('button', {name:'JP 2',exact:true}).getAttribute('aria-pressed'), 'true')
+  assert.match(await region('JP').getAttribute('aria-label'), /2\s*台/, 'map counts include online and offline public nodes')
+  await page.keyboard.press('Space')
+  assert.equal(query().get('region'), null)
+
+  await filters.getByLabel('节点状态').selectOption('all')
+  await filters.getByRole('button', {name:'US 1',exact:true}).click()
+  assert.equal(await region('US').getAttribute('aria-pressed'), 'true', 'country chip updates the map')
+  await page.reload()
+  await region('US').waitFor()
+  assert.equal(await region('US').getAttribute('aria-pressed'), 'true', 'the URL restores the map selection')
+  await marker('SG').click()
+  await page.getByRole('heading', {name:'新加坡 · 南岸',exact:true}).waitFor()
+  assert.equal(await cards.count(), 1)
+  assert.equal(query().get('region'), 'SG')
+  assert.equal(await region('SG').getAttribute('aria-pressed'), 'true')
+  await filters.getByRole('button', {name:'清除筛选',exact:true}).click()
+
+  await page.setViewportSize({width:1800,height:640})
+  await region('JP').waitFor()
+  await expectClearGutter(page, map)
+  for (const [width,height] of [[1799,900], [1920,639], [320,720], [390,844]]) {
+    await page.setViewportSize({width,height})
+    await region('JP').waitFor({state:'hidden'})
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
+    const filterBox = await filters.boundingBox()
+    const inlineBox = await map.boundingBox()
+    assert(inlineBox.y >= filterBox.y + filterBox.height - 1, 'collapsed map sits below the filters')
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+  }
+  await toggle.focus()
+  await page.keyboard.press('Enter')
+  await region('JP').waitFor()
+  await region('JP').focus()
+  await page.keyboard.press('Space')
+  assert.equal(await cards.count(), 2, 'mobile map is usable from the keyboard')
+  assert.equal(await region('JP').getAttribute('aria-pressed'), 'true')
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+  await map.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 72))
+  await page.screenshot({animations:'disabled',path:path.join(output,'node-map-mobile.png')})
+  await region('JP').click()
+  await toggle.click()
+  await page.setViewportSize({width:1920,height:1080})
+  await page.evaluate(() => window.scrollTo(0,0))
+}
+
 module.exports = async function checkTrafficRail(context, origin, nodes, output) {
   const previous = nodes.slice()
   const today = Math.floor(Date.now() / 86400000) * 86400
@@ -60,7 +140,10 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
       disk_total: 40 * GiB, disk_used: (6 + index * 2) * GiB, net_rx: (index + 1) * 125000, net_tx: (8 - index) * 70000},
     pings: [{id:1,name:'Cloudflare',latency:12 + index,updated_at:now,samples:[11,14,12,11,15,13,12,13]}],
   }))
-  nodes.splice(0, nodes.length, ...fixtures)
+  fixtures[7].country = 'FR' // A private node must not introduce a visible region.
+  const tokyoBackup = {...fixtures[0], id:20, name:'东京 · 备用', online:false, day_rx:0, day_tx:0, expires_at:null}
+  const unknown = {...tokyoBackup, id:21, name:'未定位节点', country:'', online:true}
+  nodes.splice(0, nodes.length, ...fixtures, tokyoBackup, unknown)
   const page = await context.newPage()
   const errors = []
   page.on('pageerror', e => errors.push(e.message))
@@ -80,6 +163,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await expiry.getByRole('button', {name:/东京 · 青叶/}).getByText('剩 10 天', {exact:true}).waitFor()
     await expectClearGutter(page, rail)
     await expectClearGutter(page, expiry)
+    await checkNodeMap(page, output)
     await page.screenshot({animations:'disabled',path:path.join(output,'traffic-ranking-1920.png')})
     await page.getByRole('button', {name:'切换主题',exact:true}).click()
     await page.locator('html.dark').waitFor()
@@ -129,6 +213,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await lastDue.click()
     await page.getByRole('button', {name:'刷新图表',exact:true}).waitFor()
     assert.equal(new URL(page.url()).pathname, '/node/1', 'clicking the last reminder opens that node')
+    assert.equal(await page.getByRole('region', {name:'节点地图',exact:true}).count(), 0)
     await page.goBack()
     await expiry.waitFor()
 

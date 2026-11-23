@@ -1,13 +1,15 @@
 import { readPreference, savePreference } from "@/lib/storage"
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Moon, Sun, Tag, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
 import { TrafficRanking } from "@/components/TrafficRanking"
 import { ExpiryReminder } from "@/components/ExpiryReminder"
+import { NodeMap } from "@/components/NodeMap"
 import { VisitorCard } from "@/components/VisitorCard"
 import { flagPath } from "@/lib/icons"
+import { normalizeCountry } from "@/lib/countries"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
@@ -75,20 +77,19 @@ function readFilters(): Filters {
   const p = new URLSearchParams(location.search)
   const status = p.get("status") ?? "all"
   const tag = p.get("tag") || null
-  return { region: tag ? null : p.get("region"), tag, status: ["online", "offline", "probe"].includes(status) ? status : "all" }
+  const rawRegion = p.get("region")
+  return { region: tag || !rawRegion ? null : normalizeCountry(rawRegion) ?? rawRegion, tag, status: ["online", "offline", "probe"].includes(status) ? status : "all" }
 }
 
 /** Preset labels and countries share one selection, with status alongside. */
-function FleetFilters({ nodes, presetTags, filters, onPick }: {
+function FleetFilters({ nodes, entries, presetTags, filters, onPick }: {
   nodes: Node[]
+  entries: [string, number][]
   presetTags: string[]
   filters: Filters
   onPick: (patch: Partial<Filters>) => void
 }) {
   const { region, tag, status } = filters
-  const counts = new Map<string, number>()
-  for (const n of nodes) if (n.country) counts.set(n.country, (counts.get(n.country) ?? 0) + 1)
-  const entries = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   const chip = (active: boolean) =>
     `inline-flex min-h-11 max-w-full items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-h-9 ${
       active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -189,9 +190,17 @@ export default function App() {
   // The status page is the public view for everyone: a node the panel hides
   // stays hidden even for a signed-in operator, whose complete list lives in
   // the panel rather than here.
-  const sorted = [...(nodes ?? [])].filter((n) => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id)
+  const sorted = useMemo(() => (nodes ?? []).filter(n => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id), [nodes])
+  const regions = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const node of sorted) {
+      const code = normalizeCountry(node.country)
+      if (code) counts.set(code, (counts.get(code) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [sorted])
   const selected = sorted.find((n) => n.id === open)
-  const shown = sorted.filter(n => (!region || n.country === region)
+  const shown = sorted.filter(n => (!region || normalizeCountry(n.country) === region)
     && (!tag || hasTag(n.tags, tag))
     && (status === "all" || status === "online" && n.online || status === "offline" && !n.online
       || status === "probe" && n.pings?.some(p => p.status === "stale" || p.status === "failed" || p.latency !== null && p.latency < 0)))
@@ -277,7 +286,9 @@ export default function App() {
         ) : (
           <>
             <Summary nodes={sorted} stale={stale} />
-            <FleetFilters nodes={sorted} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
+            <FleetFilters nodes={sorted} entries={regions} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
+            <NodeMap entries={regions} total={sorted.length} selected={region}
+              onPick={code => pick({ region: code === region ? null : code, tag: null })} />
             {(region || tag || status !== "all") && (
               <p className="text-sm text-muted-foreground" role="status">已显示 {shown.length} / {sorted.length} 台 · 顶部统计为全部节点</p>
             )}

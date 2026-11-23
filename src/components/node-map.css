@@ -1,0 +1,116 @@
+.node-map {
+  --map-text: var(--foreground);
+  --map-secondary: var(--muted-foreground);
+  --map-edge: var(--border);
+  --map-highlight: var(--primary);
+  --map-row-hover: var(--accent);
+  color: var(--map-text);
+  background: var(--card);
+  border: 1px solid var(--map-edge);
+  border-radius: 1rem;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+.node-map-heading {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: .65rem .875rem;
+  font-size: .875rem;
+  font-weight: 650;
+  text-align: start;
+  cursor: pointer;
+}
+.node-map-heading svg { width: 1rem; height: 1rem; color: var(--map-highlight); }
+.node-map-coverage { margin-left: auto; color: var(--map-secondary); font-weight: 450; font-size: .75rem; }
+.node-map-heading .node-map-chevron { width: .875rem; color: var(--map-secondary); }
+.node-map-heading[aria-expanded="true"] .node-map-chevron { transform: rotate(180deg); }
+.node-map button:focus-visible { outline: 2px solid var(--map-highlight); outline-offset: -3px; }
+.node-map-heading:hover, .node-map-regions button:hover { background: var(--map-row-hover); }
+#node-map-body:not([hidden]) { display: grid; }
+.node-map-atlas {
+  min-width: 0;
+  padding: .5rem .625rem .625rem;
+  background: #202f45;
+  color: #cfdeeb;
+}
+.node-world { display: block; width: 100%; max-height: 13rem; }
+.node-world-land { fill: #52657a; stroke: #2c3e54; stroke-width: 1.7; stroke-linejoin: round; }
+.node-world-coverage { fill: #64a8ae; stroke: #294959; stroke-width: 1.75; cursor: pointer; }
+.node-world-coverage[data-active="true"] { fill: #9adedb; }
+.node-world-marker { cursor: pointer; }
+.node-world-dot { fill: #bcfff2; stroke: #183f48; stroke-width: 3; }
+.node-world-marker[data-active="true"] .node-world-dot { fill: #fff4bf; stroke: #745b27; }
+.node-map-placeholder { display: grid; place-items: center; aspect-ratio: 2; font-size: .75rem; }
+.node-map-caption {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: .25rem .15rem 0;
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
+.node-map-key { width: .45rem; height: .45rem; border-radius: 50%; background: #bcfff2; }
+.node-map-directory { min-width: 0; padding: .35rem .5rem; }
+.node-map-regions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: .5rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.node-map-regions button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .25rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: .3rem .375rem;
+  border-radius: .375rem;
+  font-size: .8125rem;
+  text-align: start;
+  cursor: pointer;
+}
+.node-map-regions button span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.node-map-regions strong { color: var(--map-secondary); font-weight: 550; }
+.node-map-regions button[aria-pressed="true"] {
+  color: var(--map-highlight);
+  background: var(--map-row-hover);
+  box-shadow: inset 0 0 0 1px var(--map-highlight);
+}
+.node-map-note { margin: .35rem .375rem; color: var(--map-secondary); font-size: .75rem; }
+
+/* Below the two-rail breakpoint the disclosure sits with the fleet filters. */
+@media (min-width: 640px) {
+  #node-map-body:not([hidden]) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (min-width: 1800px) and (min-height: 640px) {
+  .fleet-overview .fleet-frame {
+    margin-inline: auto;
+    width: calc(100% - 2 * (var(--fleet-rail-width) + 1rem));
+  }
+  .node-map {
+    position: fixed;
+    inset: 5rem var(--fleet-rail-left) auto auto;
+    z-index: 9;
+    width: var(--fleet-rail-width);
+    max-height: calc(100dvh - 6rem);
+    margin: 0;
+    overflow-y: auto;
+    --map-text: #f1f5f9;
+    --map-secondary: #cbd5e1;
+    --map-edge: rgb(255 255 255 / 12%);
+    --map-highlight: #b6e8df;
+    --map-row-hover: rgb(255 255 255 / 8%);
+    background: rgb(15 23 42 / 82%);
+    box-shadow: 0 8px 22px rgb(15 23 42 / 12%);
+  }
+  #node-map-body:not([hidden]) { grid-template-columns: 1fr; }
+  .node-map-regions { max-height: 10rem; }
+  .node-map-regions button { min-height: 1.9rem; }
+}
