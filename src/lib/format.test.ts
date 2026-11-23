@@ -91,17 +91,25 @@ for (const max of [3_000, 300_000, 3_000_000, 300_000_000]) {
   eq(timeTicks(to, to - day), [], "反向区间不产出刻度")
 }
 
-// daysUntil: whole days, negative once past, null when there is no date.
+// The Hub bills by local calendar date, including 23- and 25-hour days.
 {
-  const at = (days: number) => {
-    const d = new Date()
-    d.setDate(d.getDate() + days)
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-  }
-  eq(daysUntil(at(10), (Date.now() + 10 * 86400000)/1000, Date.now()/1000), 10, "十天后")
-  eq(daysUntil(at(-3), (Date.now() - 3 * 86400000)/1000, Date.now()/1000), -3, "已过期为负")
+  const sec = (iso: string) => Date.parse(iso) / 1000
+  const midnight = sec("2026-11-23T16:00:00Z")
+  eq(daysUntil("2026-12-03", null, midnight - 1, "+08:00"), 10, "服务器当天结束前恰好十天")
+  eq(daysUntil("2026-11-24", midnight, midnight - 1, "+08:00"), 1, "服务器跨日之前")
+  eq(daysUntil("2026-11-24", midnight, midnight, "+08:00"), 0, "服务器零点开始算当天")
+  eq(daysUntil("2026-11-24", midnight, midnight + 86400, "+08:00"), -1, "到期日的下一天")
+  const fallEnd = sec("2026-11-02T05:00:00Z")
+  eq(daysUntil("2026-11-02", fallEnd, sec("2026-11-01T04:30:00Z"), "-04:00"), 1, "冬令时前的 24.5 小时是一个日历日")
+  eq(daysUntil("2026-03-08", sec("2026-03-08T05:00:00Z"), sec("2026-03-09T04:30:00Z"), "-04:00"), -1, "夏令时后的 23.5 小时也已跨天")
+  eq(daysUntil("2026-11-24", null, sec("2026-11-23T18:15:00Z"), "+05:45"), 0, "含分钟的服务器时区偏移")
+  eq(daysUntil("2026-11-24", midnight, midnight + 1), 0, "旧 Hub 仅有 epoch 仍按已有边界判断")
+  eq(daysUntil("2026-11-24", null, sec("2026-11-23T23:59:59Z")), 1, "旧 Hub 仅有日期时按 UTC 兼容")
   eq(daysUntil(null), null, "无到期日")
-  eq(daysUntil("不是日期"), null, "无法解析的日期")
+  for (const date of ["不是日期", "2026-02-29", "2026-02-30", "2026-2-01", "2026-11-00"]) {
+    eq(daysUntil(date, midnight, midnight, "+08:00"), null, `无效到期日：${date}`)
+  }
+  eq(daysUntil("2028-02-29", null, sec("2028-02-28T00:00:00Z"), "+00:00"), 1, "闰年有效日期")
 }
 
 // expiryText: use 365-day years for long countdowns; keep short and expired labels.

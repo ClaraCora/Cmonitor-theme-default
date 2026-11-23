@@ -74,12 +74,31 @@ export function uptime(seconds: number): string {
   return d > 0 ? `${d} 天 ${h} 小时` : h > 0 ? `${h} 小时 ${m} 分` : `${m} 分`
 }
 
-/** Whole days until a date, negative once it has passed. */
-export function daysUntil(date?: string | null, expiresAt?: number | null, valuationAt?: number): number | null {
-  if (!date) return null
-  const target = expiresAt != null ? expiresAt * 1000 : new Date(`${date}T00:00:00Z`).getTime()
-  if (Number.isNaN(target)) return null
-  return Math.ceil((target - (valuationAt !== undefined ? valuationAt * 1000 : Date.now())) / 86400000)
+/** Calendar days from the Hub's current local date to the configured expiry date. */
+export function daysUntil(
+  date?: string | null,
+  expiresAt?: number | null,
+  valuationAt?: number,
+  billingTimezone?: string,
+): number | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null
+  const target = new Date(`${date}T00:00:00Z`)
+  if (!Number.isFinite(target.getTime()) || target.toISOString().slice(0, 10) !== date) return null
+  const now = valuationAt ?? Date.now() / 1000
+  if (!Number.isFinite(now)) return null
+
+  // The Hub sends its UTC offset at valuation time. Offset only today's clock:
+  // the expiry is already a calendar date, even if DST changes before then.
+  const offset = /^([+-])([01]\d|2[0-3]):([0-5]\d)$/.exec(billingTimezone ?? "")
+  if (offset) {
+    const minutes = (offset[1] === "-" ? -1 : 1) * (Number(offset[2]) * 60 + Number(offset[3]))
+    const today = Math.floor((now + minutes * 60) / 86400)
+    return target.getTime() / 86400000 - today
+  }
+
+  // Older Hubs may supply only the boundary instant, or just the date.
+  const boundary = expiresAt ?? target.getTime() / 1000
+  return Number.isFinite(boundary) ? Math.ceil((boundary - now) / 86400) : null
 }
 
 /** Long expiry countdowns use fixed 365-day years, not calendar anniversaries. */

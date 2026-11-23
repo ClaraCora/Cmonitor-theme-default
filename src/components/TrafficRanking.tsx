@@ -23,7 +23,7 @@ function rankTone(rank: number): string {
 }
 
 /** Every public VPS ranked by the traffic booked to the current calendar day. */
-export function TrafficRanking({ nodes, showDock, stale }: { nodes: Node[]; showDock: boolean; stale: boolean }) {
+export function TrafficRanking({ nodes, dockHost, stale }: { nodes: Node[]; dockHost: HTMLElement | null; stale: boolean }) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => readPreference("traffic-rank-collapsed", true) === "1")
   const dockOpener = useRef<HTMLButtonElement | null>(null)
@@ -45,7 +45,7 @@ export function TrafficRanking({ nodes, showDock, stale }: { nodes: Node[]; show
         </Button>
       </DialogPrimitive.Trigger>
 
-      {showDock && createPortal(
+      {dockHost && createPortal(
         <aside className="traffic-dock" aria-label="今日流量排行浮窗">
           <button type="button" className="traffic-dock-heading" onClick={toggleDock}
             aria-expanded={!collapsed} aria-controls="traffic-dock-body"
@@ -76,7 +76,7 @@ export function TrafficRanking({ nodes, showDock, stale }: { nodes: Node[]; show
               查看完整排行 <ArrowRight aria-hidden="true" />
             </button>
           </div>
-        </aside>, document.body)}
+        </aside>, dockHost)}
 
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none" />

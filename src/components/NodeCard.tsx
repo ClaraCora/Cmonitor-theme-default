@@ -95,7 +95,7 @@ function trafficFoot(node: Node) {
 // An absent date distinguishes a permanent host from an unset renewal date. A
 // blank corner asserts neither.
 function Expiry({ node }: { node: Node }) {
-  const days = daysUntil(node.expires_at, node.expires_at_epoch, node.valuation_at)
+  const days = node.permanent ? null : daysUntil(node.expires_at, node.expires_at_epoch, node.valuation_at, node.billing_timezone)
   if (days === null) {
     return (
       <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={node.permanent ? "永久有效" : "未设置到期日"}>

@@ -5,6 +5,7 @@ import { Moon, Sun, Tag, Wrench } from "lucide-react"
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
 import { TrafficRanking } from "@/components/TrafficRanking"
+import { ExpiryReminder } from "@/components/ExpiryReminder"
 import { VisitorCard } from "@/components/VisitorCard"
 import { flagPath } from "@/lib/icons"
 import { Button } from "@/components/ui/button"
@@ -131,6 +132,7 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
+  const [rankingHost, setRankingHost] = useState<HTMLDivElement | null>(null)
   const [filters, setFilters] = useState(readFilters)
   const presetTags = parsePresetTags(me?.preset_tag)
   const { region, status } = filters
@@ -231,7 +233,7 @@ export default function App() {
             <img src="/favicon.svg" alt="" className="size-5 rounded-md" />
             <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
-          <TrafficRanking nodes={sorted} showDock={open === null && nodes !== null} stale={stale} />
+          <TrafficRanking nodes={sorted} dockHost={nodes && open === null ? rankingHost : null} stale={stale} />
           {/* The hub names the panel only to a signed-in caller, so the path
               never appears in the bundle an anonymous visitor downloads. */}
           {me.authed && me.admin_url && (
@@ -291,8 +293,13 @@ export default function App() {
           </>
         )}
       </main>
-      {/* The greeting belongs to the list: a node page is read, not visited. */}
-      {open === null && me.visitor_card !== false && <VisitorCard />}
+      {open === null && <div className="fleet-rail">
+        <div className="fleet-rail-panels">
+          <div ref={setRankingHost} />
+          <ExpiryReminder nodes={sorted} onOpen={go} />
+        </div>
+        {me.visitor_card !== false && <VisitorCard />}
+      </div>}
     </div>
   )
 }
