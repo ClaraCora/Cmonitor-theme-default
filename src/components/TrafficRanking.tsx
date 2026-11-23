@@ -1,4 +1,6 @@
-import { ArrowDown, ArrowUp, Trophy, X } from "lucide-react"
+import { useRef, useState } from "react"
+import { createPortal } from "react-dom"
+import { ArrowDown, ArrowRight, ArrowUp, ChartNoAxesColumnDecreasing, ChevronDown, ChevronUp, Trophy, X } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
@@ -6,9 +8,11 @@ import { bytes } from "@/lib/format"
 import { flagPath } from "@/lib/icons"
 import { cn } from "@/lib/utils"
 import type { Node } from "@/lib/api"
+import { readPreference, savePreference } from "@/lib/storage"
+import "./traffic-dock.css"
 
-function total(node: Node): number {
-  return node.day_rx + node.day_tx
+function total(node: Node): number | null {
+  return Number.isFinite(node.day_rx) && Number.isFinite(node.day_tx) ? node.day_rx + node.day_tx : null
 }
 
 function rankTone(rank: number): string {
@@ -19,12 +23,20 @@ function rankTone(rank: number): string {
 }
 
 /** Every public VPS ranked by the traffic booked to the current calendar day. */
-export function TrafficRanking({ nodes }: { nodes: Node[] }) {
-  const ranked = [...nodes].sort((a, b) => total(b) - total(a) || a.sort - b.sort || a.id - b.id)
-  const combined = ranked.reduce((sum, node) => sum + total(node), 0)
+export function TrafficRanking({ nodes, showDock, stale }: { nodes: Node[]; showDock: boolean; stale: boolean }) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => readPreference("traffic-rank-collapsed", true) === "1")
+  const dockOpener = useRef<HTMLButtonElement | null>(null)
+  const ranked = [...nodes].sort((a, b) => (total(b) ?? -1) - (total(a) ?? -1) || a.sort - b.sort || a.id - b.id)
+  const combined = ranked.reduce((sum, node) => sum + (total(node) ?? 0), 0)
+  const leader = ranked.length ? total(ranked[0]) : null
+  const toggleDock = () => {
+    setCollapsed(!collapsed)
+    savePreference("traffic-rank-collapsed", collapsed ? "0" : "1", true)
+  }
 
   return (
-    <DialogPrimitive.Root>
+    <DialogPrimitive.Root open={dialogOpen} onOpenChange={setDialogOpen}>
       <DialogPrimitive.Trigger asChild>
         <Button variant="ghost" size="sm">
           <Trophy />
@@ -33,9 +45,48 @@ export function TrafficRanking({ nodes }: { nodes: Node[] }) {
         </Button>
       </DialogPrimitive.Trigger>
 
+      {showDock && createPortal(
+        <aside className="traffic-dock" aria-label="今日流量排行浮窗">
+          <button type="button" className="traffic-dock-heading" onClick={toggleDock}
+            aria-expanded={!collapsed} aria-controls="traffic-dock-body"
+            aria-label={collapsed ? "展开今日流量排行" : "收起今日流量排行"}>
+            <ChartNoAxesColumnDecreasing aria-hidden="true" />
+            <span>今日流量排行</span>
+            {collapsed ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
+          </button>
+          <div id="traffic-dock-body" hidden={collapsed}>
+            <p className="traffic-dock-caption">{stale ? "更新中断 · 上次数据" : "上传 + 下载"}</p>
+            {ranked.length ? (
+              <ol className="traffic-dock-list">
+                {ranked.slice(0, 5).map((node, index) => {
+                  const value = total(node)
+                  return <li key={node.id}>
+                    <span className="traffic-dock-rank tnum" aria-hidden="true">{index + 1}</span>
+                    <span className="traffic-dock-name" title={node.name}>{node.name}</span>
+                    <strong className="traffic-dock-value tnum">{value === null ? "—" : bytes(value)}</strong>
+                    <span className="traffic-dock-track" aria-hidden="true">
+                      <span style={{ width: `${leader && value ? value / leader * 100 : 0}%` }} />
+                    </span>
+                  </li>
+                })}
+              </ol>
+            ) : <p className="traffic-dock-empty">暂无公开节点</p>}
+            <button type="button" className="traffic-dock-more" aria-haspopup="dialog"
+              onClick={event => { dockOpener.current = event.currentTarget; setDialogOpen(true) }}>
+              查看完整排行 <ArrowRight aria-hidden="true" />
+            </button>
+          </div>
+        </aside>, document.body)}
+
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none" />
-        <DialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none">
+        <DialogPrimitive.Content onCloseAutoFocus={event => {
+          if (dockOpener.current?.getClientRects().length) {
+            event.preventDefault()
+            dockOpener.current.focus()
+          }
+          dockOpener.current = null
+        }} className="fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none">
           <div className="flex items-start gap-4 border-b px-4 py-4 sm:px-5">
             <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
               <Trophy className="size-4.5" />
@@ -60,6 +111,7 @@ export function TrafficRanking({ nodes }: { nodes: Node[] }) {
               <ol className="divide-y">
                 {ranked.map((node, index) => {
                   const rank = index + 1
+                  const value = total(node)
                   return (
                     <li key={node.id} className="grid gap-3 px-2 py-3 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,0.9fr)] sm:items-center sm:px-3">
                       <div className="flex min-w-0 items-center gap-3">
@@ -98,7 +150,7 @@ export function TrafficRanking({ nodes }: { nodes: Node[] }) {
                         </div>
                         <div className="min-w-0">
                           <dt className="text-[11px] text-muted-foreground">总和</dt>
-                          <dd className="mt-0.5 truncate text-sm font-semibold" title={bytes(total(node))}>{bytes(total(node))}</dd>
+                          <dd className="mt-0.5 truncate text-sm font-semibold">{value === null ? "—" : bytes(value)}</dd>
                         </div>
                       </dl>
                     </li>

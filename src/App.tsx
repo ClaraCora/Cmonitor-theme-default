@@ -222,16 +222,16 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-svh">
+    <div className={open === null ? "fleet-overview min-h-svh" : "min-h-svh"}>
       <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-[1400px] items-center gap-1.5 px-4 py-3 sm:gap-3 sm:px-6">
+        <div className="fleet-frame mx-auto flex max-w-[1400px] items-center gap-1.5 px-4 py-3 sm:gap-3 sm:px-6">
           {/* The site name is the way back to the list, so a node page needs
               no back button of its own. */}
           <button className="flex min-w-0 flex-1 items-center gap-2 font-semibold transition-opacity hover:opacity-70" onClick={() => go(null)}>
             <img src="/favicon.svg" alt="" className="size-5 rounded-md" />
             <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
-          <TrafficRanking nodes={sorted} />
+          <TrafficRanking nodes={sorted} showDock={open === null && nodes !== null} stale={stale} />
           {/* The hub names the panel only to a signed-in caller, so the path
               never appears in the bundle an anonymous visitor downloads. */}
           {me.authed && me.admin_url && (
@@ -249,7 +249,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1400px] space-y-5 px-4 py-4 sm:px-6">
+      <main className="fleet-frame mx-auto max-w-[1400px] space-y-5 px-4 py-4 sm:px-6">
         {stale && <div role="status" className="rounded-lg border p-3 text-sm">数据更新中断，以下为最近一次收到的状态（{lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString("zh-CN") : "—"}）。正在尝试重新连接。</div>}
         {!stale && lastUpdatedAt && <p className="text-xs text-muted-foreground">{connection === "live" ? "实时更新" : "轮询更新"} · 最近更新 {new Date(lastUpdatedAt).toLocaleTimeString("zh-CN")}</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}

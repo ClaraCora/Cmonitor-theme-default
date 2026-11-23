@@ -1,0 +1,93 @@
+/* Both floating windows use the same rail. On an ultrawide display it
+   follows the content; on a smaller desktop the header and grid make room. */
+.traffic-dock { display: none; }
+
+@media (min-width: 1600px) and (min-height: 640px) {
+  :root {
+    --fleet-rail-width: clamp(13.5rem, calc(20vw - 6.5rem), 16rem);
+    --fleet-rail-left: max(1rem, calc((100% - 1400px) / 2 - var(--fleet-rail-width)));
+  }
+  .fleet-overview .fleet-frame {
+    margin-inline-start: max(calc(1rem + var(--fleet-rail-width)), calc((100% - 1400px) / 2));
+    margin-inline-end: auto;
+  }
+  .fleet-overview .visitor-desktop, .traffic-dock {
+    left: var(--fleet-rail-left);
+    width: var(--fleet-rail-width);
+  }
+  .traffic-dock {
+    display: block;
+    position: fixed;
+    z-index: 9;
+    top: 5rem;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 12%);
+    border-radius: 1rem;
+    background: rgb(15 23 42 / 82%);
+    color: #f1f5f9;
+    box-shadow: 0 8px 22px rgb(15 23 42 / 12%);
+    backdrop-filter: blur(12px);
+    --rank-accent: #b9caff;
+    --rank-secondary: #cbd5e1;
+  }
+  .traffic-dock-heading, .traffic-dock-more {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    text-align: start;
+    cursor: pointer;
+  }
+  .traffic-dock button:focus-visible {
+    outline: 2px solid var(--rank-accent);
+    outline-offset: -4px;
+  }
+  .traffic-dock button:hover { background: rgb(255 255 255 / 7%); }
+  .traffic-dock-heading {
+    gap: .5rem;
+    padding: .875rem .875rem .25rem;
+    font-size: .875rem;
+    font-weight: 650;
+  }
+  .traffic-dock-heading[aria-expanded="false"] { padding-block: .875rem; }
+  .traffic-dock-heading svg { width: 1rem; height: 1rem; color: var(--rank-accent); }
+  .traffic-dock-heading svg:last-child { margin-inline-start: auto; color: var(--rank-secondary); }
+  .traffic-dock-caption, .traffic-dock-empty {
+    margin: 0 .875rem;
+    color: var(--rank-secondary);
+    font-size: .75rem;
+  }
+  .traffic-dock-caption { margin-inline-start: 2.375rem; }
+  .traffic-dock-empty { padding-block: 1rem; }
+  .traffic-dock-list { margin: .625rem .875rem .75rem; }
+  .traffic-dock-list li {
+    display: grid;
+    grid-template-columns: .9rem minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: .3rem .4rem;
+    padding-block: .375rem;
+    font-size: .8125rem;
+    line-height: 1.25;
+  }
+  .traffic-dock-rank { color: var(--rank-secondary); font-size: .75rem; }
+  .traffic-dock-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .traffic-dock-value { white-space: nowrap; font-weight: 600; }
+  .traffic-dock-track {
+    grid-column: 2 / -1;
+    height: 3px;
+    background: rgb(255 255 255 / 12%);
+    border-radius: 1rem;
+    overflow: hidden;
+  }
+  .traffic-dock-track > span { display: block; height: 100%; background: #91a7df; }
+  .traffic-dock-list li:first-child :is(.traffic-dock-rank, .traffic-dock-value) { color: var(--rank-accent); }
+  .traffic-dock-list li:first-child .traffic-dock-track > span { background: var(--rank-accent); }
+  .traffic-dock-more {
+    justify-content: space-between;
+    padding: .65rem .875rem;
+    border-top: 1px solid rgb(255 255 255 / 12%);
+    color: var(--rank-secondary);
+    font-size: .75rem;
+    font-weight: 550;
+  }
+  .traffic-dock-more svg { width: .875rem; height: .875rem; }
+}

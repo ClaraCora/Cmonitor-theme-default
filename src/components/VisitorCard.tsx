@@ -69,7 +69,7 @@ export function VisitorCard() {
 
   return (
     <>
-      <aside aria-label="来访者信息" className="fixed bottom-4 left-4 z-40 hidden w-64 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-slate-100 shadow-xl backdrop-blur-md md:block">
+      <aside aria-label="来访者信息" className="visitor-desktop fixed bottom-4 left-4 z-40 hidden w-64 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-slate-100 shadow-xl backdrop-blur-md md:block">
         <div className="flex items-start gap-2.5">
           <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-400 to-blue-600">
             <User className="size-5 text-white" />

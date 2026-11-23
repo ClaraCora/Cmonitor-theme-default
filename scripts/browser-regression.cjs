@@ -309,6 +309,7 @@ async function main() {
       await page.getByText('这段时间没有 TCP 观测，请查看 DNS 错误和当前探测状态。',{exact:true}).waitFor()
       await page.goto(origin+'/')
     }
+    if (mode === 'theme') await require('./traffic-rail-regression.cjs')(context, origin, nodes, output)
     // A denied Storage API must not blank either app (including restore status).
     await context.addInitScript(()=>{
       Storage.prototype.getItem=()=>{throw new DOMException('blocked','SecurityError')}
