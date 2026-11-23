@@ -4,7 +4,7 @@
   padding: .75rem .7rem .65rem;
   min-width: 0;
   color: var(--map-text);
-  background: var(--card);
+  background: var(--tool-bg);
   border: 1px solid var(--map-edge);
   border-radius: 1rem;
   font-variant-numeric: tabular-nums;
@@ -39,6 +39,3 @@
 .weekly-note { margin-top:.45rem; font-size:.75rem; line-height:1.6; overflow-wrap:anywhere; }
 .weekly-note { color:var(--map-secondary); }
 .weekly-note button { color:var(--map-text); text-decoration:underline; text-underline-offset: .15em; padding:.2rem; cursor:pointer; }
-@media (min-width:1800px) and (min-height:640px) {
-  .weekly-traffic { background: rgb(15 23 42 / 82%); box-shadow: 0 8px 22px rgb(15 23 42 / 12%); }
-}

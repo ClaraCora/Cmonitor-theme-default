@@ -19,6 +19,30 @@ function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
 }
 
+async function expectInlineRow(page, panels) {
+  const boxes = []
+  for (const panel of panels) {
+    await panel.waitFor()
+    assert.equal(await panel.count(), 1, 'each panel appears once')
+    boxes.push(await panel.boundingBox())
+  }
+  const firstNode = await page.locator('.node-card').first().boundingBox()
+  const summary = await page.getByRole('region', {name:'节点统计'}).boundingBox()
+  const filters = await page.getByRole('group', {name:'节点筛选'}).boundingBox()
+  const firstTop = boxes[0].y
+  assert(firstTop >= filters.y + filters.height - 1, 'the inline row follows the filters')
+  for (const box of boxes) {
+    assert(Math.abs(box.y - firstTop) <= 2, 'all available panels align in one row')
+    assert(box.x >= summary.x - 1 && box.x + box.width <= summary.x + summary.width + 1,
+      'each panel fits the main column')
+    assert(box.y + box.height <= firstNode.y + 1, 'the row precedes the node list')
+  }
+  for (let i = 1; i < boxes.length; i++) {
+    assert(boxes[i].x >= boxes[i - 1].x + boxes[i - 1].width, 'neighboring panels do not overlap')
+  }
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+}
+
 async function expectClearGutter(page, rail) {
   const box = await rail.boundingBox()
   const {width, height} = page.viewportSize()
@@ -109,31 +133,121 @@ async function checkNodeMap(page, output) {
   await page.setViewportSize({width:1800,height:640})
   await marker('JP').waitFor()
   await expectClearGutter(page, map)
-  for (const [width,height] of [[1799,900], [1920,639], [320,720], [390,844]]) {
+  const week = page.getByRole('region', {name:'近 7 天流量',exact:true})
+  const rank = page.locator('[aria-label="今日流量排行浮窗"]')
+  const visitor = page.getByRole('complementary', {name:'来访者信息',exact:true})
+  const expiry = page.getByRole('region', {name:'临期提醒',exact:true})
+  const headerRank = page.locator('header').getByRole('button',{name:/排行/})
+  for (const [width,height] of [[1799,900], [1600,640], [1440,900], [1024,768], [1920,639]]) {
     await page.setViewportSize({width,height})
-    await marker('JP').waitFor({state:'hidden'})
-    assert.equal(await toggle.getAttribute('aria-expanded'), 'false')
-    const filterBox = await filters.boundingBox()
-    const inlineBox = await map.boundingBox()
-    assert(inlineBox.y >= filterBox.y + filterBox.height - 1, 'collapsed map sits below the filters')
+    await marker('JP').waitFor()
+    await expectInlineRow(page, [map, week, rank, visitor])
+    const exp = await expiry.boundingBox()
+    for (const panel of [map, week, rank, visitor]) {
+      const r = await panel.boundingBox()
+      assert(exp.y >= r.y + r.height - 1, 'expiry reminders appear on their own line')
+    }
+    assert.equal(await headerRank.count(), 0, 'the homepage has a single ranking entry')
+    if (width === 1440) await page.screenshot({animations:'disabled',path:path.join(output,'fleet-tools-desktop.png')})
+  }
+  await toggle.click()
+  await marker('JP').waitFor({state:'hidden'})
+  assert.equal(await week.locator('[data-traffic-day]').count(), 7, 'collapsing the desktop map leaves the weekly chart accessible')
+  await toggle.click()
+
+  const titles = ['节点地图','近 7 天流量','今日流量排行','访客']
+  const tools = titles.map(name => page.getByRole('button',{name,exact:true}))
+  for (const [width,height] of [[1023,768], [390,844], [320,720]]) {
+    await page.setViewportSize({width,height})
+    const boxes = []
+    for (const tool of tools) {
+      await tool.waitFor()
+      assert.equal(await tool.count(), 1, 'each mobile tool has just one launcher')
+      assert.equal(await tool.getAttribute('aria-expanded'), 'false')
+      boxes.push(await tool.boundingBox())
+    }
+    assert.equal(await visitor.count(), 0, 'the visitor does not float above nodes')
+    assert.equal(await headerRank.count(), 0)
+    for (let i = 1; i < boxes.length; i++) {
+      assert(Math.abs(boxes[0].y - boxes[i].y) <= 1 && boxes[i-1].x + boxes[i-1].width <= boxes[i].x + 1, 'four mobile launchers fit one row')
+    }
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   }
-  await toggle.focus()
+  await tools[0].focus()
   await page.keyboard.press('Enter')
   await marker('JP').waitFor()
   assert.equal(await markers.count(), expectedRegions.length, 'expanding the phone map displays every known region')
-  assert.equal(await map.getByRole('button').count(), 1)
   await country('JP', 2).focus()
   await page.keyboard.press('Space')
   assert.equal(await cards.count(), 2, 'mobile keyboard users can select a country from the center filters')
   assert.equal(await marker('JP').getAttribute('data-active'), 'true')
-  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
-  await map.evaluate(el => window.scrollBy(0, el.getBoundingClientRect().top - 72))
-  await page.screenshot({animations:'disabled',path:path.join(output,'node-map-mobile.png')})
+  await tools[1].click()
+  await marker('JP').waitFor({state:'hidden'})
+  await week.getByText('日本', {exact:true}).waitFor()
+  await week.locator('[data-traffic-day]').last().click()
+  const daily = page.getByRole('dialog',{name:'当日流量排行',exact:true})
+  await daily.getByText('东京 · 青叶',{exact:true}).waitFor()
+  await page.keyboard.press('Escape')
+  await daily.waitFor({state:'hidden'})
+  await tools[2].click()
+  await week.waitFor({state:'hidden'})
+  await rank.getByRole('button',{name:'查看完整排行',exact:true}).click()
+  const todayRank = page.getByRole('dialog',{name:'今日流量排行',exact:true})
+  await todayRank.waitFor()
+  await page.keyboard.press('Escape')
+  await todayRank.waitFor({state:'hidden'})
+  await tools[3].click()
+  await visitor.getByText('198.51.100.99',{exact:true}).waitFor()
+  assert.notEqual(await visitor.evaluate(el=>getComputedStyle(el).position),'fixed')
+  for (let i=0; i<tools.length; i++) assert.equal(await tools[i].getAttribute('aria-expanded'), String(i===3))
+  await visitor.scrollIntoViewIfNeeded()
+  await page.screenshot({animations:'disabled',path:path.join(output,'fleet-tools-mobile.png')})
+  await tools[3].click()
+  await visitor.waitFor({state:'hidden'})
   await country('JP', 2).click()
-  await toggle.click()
   await page.setViewportSize({width:1920,height:1080})
   await page.evaluate(() => window.scrollTo(0,0))
+}
+
+async function checkOptionalVisitor(context, origin) {
+  const page = await context.newPage()
+  try {
+    await page.setViewportSize({width:1280,height:800})
+    await page.goto(origin)
+    const visitor = page.getByRole('complementary',{name:'来访者信息',exact:true})
+    const map = page.getByRole('region',{name:'节点地图',exact:true})
+    const week = page.getByRole('region',{name:'近 7 天流量',exact:true})
+    const ranking = page.locator('[aria-label="今日流量排行浮窗"]')
+    await visitor.getByRole('button',{name:'关闭访客信息',exact:true}).click()
+    await visitor.waitFor({state:'hidden'})
+    await expectInlineRow(page, [map, week, ranking])
+    const widths = await Promise.all([map,week,ranking].map(async panel => (await panel.boundingBox()).width))
+    assert(Math.max(...widths) - Math.min(...widths) <= 2, 'dismissing the visitor redistributes the row in three equal columns')
+    await page.setViewportSize({width:320,height:720})
+    assert.equal(await page.getByRole('button',{name:'访客',exact:true}).count(), 0)
+    // A fresh tab has no dismissal preference. The Hub can also turn off this panel.
+    const disabled = await context.newPage()
+    try {
+      await disabled.route('**/api/me', route => route.fulfill({json:{
+        site_name:'Monitor', authed:false, public_page:true, visitor_card:false,
+      }}))
+      await disabled.setViewportSize({width:1024,height:768})
+      await disabled.goto(origin)
+      const panels = [
+        disabled.getByRole('region',{name:'节点地图',exact:true}),
+        disabled.getByRole('region',{name:'近 7 天流量',exact:true}),
+        disabled.locator('[aria-label="今日流量排行浮窗"]'),
+      ]
+      await expectInlineRow(disabled, panels)
+      assert.equal(await disabled.getByRole('complementary',{name:'来访者信息',exact:true}).count(), 0)
+      const bounds = await Promise.all(panels.map(panel => panel.boundingBox()))
+      assert(Math.max(...bounds.map(r => r.width)) - Math.min(...bounds.map(r => r.width)) <= 2)
+    } finally {
+      await disabled.close()
+    }
+  } finally {
+    await page.close()
+  }
 }
 
 module.exports = async function checkTrafficRail(context, origin, nodes, output) {
@@ -176,6 +290,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await expectClearGutter(page, rail)
     await expectClearGutter(page, expiry)
     await checkNodeMap(page, output)
+    await checkOptionalVisitor(context, origin)
     await require('./weekly-traffic-regression.cjs').checkWeekly(context, origin, output)
     await page.screenshot({animations:'disabled',path:path.join(output,'traffic-ranking-1920.png')})
     await page.getByRole('button', {name:'切换主题',exact:true}).click()
@@ -198,14 +313,14 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     fixtures[5].day_tx = 72 * GiB
     await expectNames(rail.getByRole('list').first(), ['悉尼 · 北港', ...firstFive.slice(0,4)])
 
-    await page.setViewportSize({width:1600,height:640})
+    await page.setViewportSize({width:1800,height:640})
     await rail.waitFor()
     await expectClearGutter(page, rail)
     await expectClearGutter(page, expiry)
 
     const rankBox = await rail.boundingBox()
     assert(!intersects(rankBox, await expiry.boundingBox()), 'the two panels have separate space')
-    await page.screenshot({animations:'disabled',path:path.join(output,'traffic-expiry-1600.png')})
+    await page.screenshot({animations:'disabled',path:path.join(output,'traffic-expiry-1800.png')})
 
     // All reminders must remain reachable even when a short desktop cannot fit the list.
     const extra = Array.from({length:12}, (_, i) => ({...fixtures[1], id:100 + i, sort:100 + i,
@@ -226,21 +341,14 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await lastDue.click()
     await page.getByRole('button', {name:'刷新图表',exact:true}).waitFor()
     assert.equal(new URL(page.url()).pathname, '/node/1', 'clicking the last reminder opens that node')
-    assert.equal(await page.getByRole('region', {name:'节点地图',exact:true}).count(), 0)
-    await page.goBack()
-    await expiry.waitFor()
-
-    for (const [width,height] of [[1599,900], [1920,639], [390,844]]) {
-      await page.setViewportSize({width,height})
-      await rail.waitFor({state:'hidden'})
-      await expiry.waitFor({state:'hidden'})
-    }
-    const headerAction = page.locator('header').getByRole('button', {name:/排行/})
-    await headerAction.click()
+    const headerRank = page.locator('header').getByRole('button', {name:/排行/})
+    await headerRank.click()
     await dialog.waitFor()
     await page.keyboard.press('Escape')
     await dialog.waitFor({state:'hidden'})
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
+    assert.equal(await page.getByRole('region', {name:'节点地图',exact:true}).count(), 0)
+    await page.goBack()
+    await expiry.waitFor()
 
     await page.setViewportSize({width:1920,height:1080})
     await expiry.waitFor()

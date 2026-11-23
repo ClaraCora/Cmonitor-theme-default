@@ -146,7 +146,7 @@ export function WeeklyTraffic({ selected, visible }: { selected: string | null; 
   const {week, error, reload} = useWeek(visible)
   if (!visible) return null
   const series = week && (selected ? week.regions[selected] : week.all)
-  return <section className="weekly-traffic" aria-label="近 7 天流量">
+  return <section id="fleet-tool-week" className="weekly-traffic" aria-label="近 7 天流量">
     <div className="weekly-heading">
       <ChartNoAxesColumn aria-hidden="true" /><h2>近 7 天流量</h2>
       <span>{selected ? regionLabel(selected) : "全部地区"}</span>

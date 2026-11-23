@@ -1,16 +1,9 @@
-import { Component, lazy, Suspense, useState, useSyncExternalStore, type ReactNode } from "react"
+import { Component, lazy, Suspense, useState, type ReactNode } from "react"
 import { ChevronDown, Earth } from "lucide-react"
 import { regionLabel } from "@/lib/countries"
-import { WeeklyTraffic } from "./WeeklyTraffic"
 import "./node-map.css"
 
 const WorldPlot = lazy(() => import("./WorldPlot"))
-const wide = matchMedia("(min-width: 1800px) and (min-height: 640px)")
-function watchWide(listener: () => void) {
-  wide.addEventListener("change", listener)
-  return () => wide.removeEventListener("change", listener)
-}
-
 class PlotBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
@@ -20,31 +13,32 @@ class PlotBoundary extends Component<{ children: ReactNode }, { failed: boolean 
 }
 
 type Props = {
+  compact: boolean
   entries: [string, number][]
   total: number
   selected: string | null
   onPick: (code: string) => void
 }
 
-export function NodeMap({ entries, total, selected, onPick }: Props) {
-  const docked = useSyncExternalStore(watchWide, () => wide.matches)
-  const [expanded, setExpanded] = useState({ dock: true, inline: false })
-  const mode = docked ? "dock" : "inline"
-  const open = expanded[mode]
+export function NodeMap({ entries, total, selected, onPick, compact }: Props) {
+  const [expanded, setExpanded] = useState(true)
+  const open = compact || expanded
   const [hover, setHover] = useState<string | null>(null)
   const current = entries.find(([code]) => code === (hover ?? selected))
   const unknown = total - entries.reduce((sum, [, count]) => sum + count, 0)
 
-  return <div className="geo-week-panels">
-    <section className="node-map" aria-label="节点地图">
-      <h2>
+  const heading = <>
+    <Earth aria-hidden="true" />节点地图
+    <span className="node-map-coverage tnum">{entries.length} 个地区</span>
+  </>
+  return (
+    <section id="fleet-tool-map" className="node-map" aria-label="节点地图">
+      {compact ? <h2 className="node-map-heading">{heading}</h2> : <h2>
         <button className="node-map-heading" type="button" aria-label="节点地图" aria-expanded={open} aria-controls="node-map-body"
-          onClick={() => { setExpanded(prev => ({ ...prev, [mode]: !prev[mode] })); setHover(null) }}>
-          <Earth aria-hidden="true" />节点地图
-          <span className="node-map-coverage tnum">{entries.length} 个地区</span>
-          <ChevronDown aria-hidden="true" className="node-map-chevron" />
+          onClick={() => { setExpanded(!expanded); setHover(null) }}>
+          {heading}<ChevronDown aria-hidden="true" className="node-map-chevron" />
         </button>
-      </h2>
+      </h2>}
       <div id="node-map-body" hidden={!open}>
         {open && (entries.length ? (
           <div className="node-map-atlas">
@@ -64,6 +58,5 @@ export function NodeMap({ entries, total, selected, onPick }: Props) {
         ))}
       </div>
     </section>
-    <WeeklyTraffic selected={selected} visible={open} />
-  </div>
+  )
 }

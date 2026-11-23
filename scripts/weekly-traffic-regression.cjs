@@ -105,7 +105,7 @@ async function checkWeekly(context, origin, output) {
     unavailable = true
     await page.reload()
     const beforeOpening = calls
-    await map.getByRole('button',{name:'节点地图',exact:true}).click()
+    await page.getByRole('button',{name:'近 7 天流量',exact:true}).click()
     await chart.getByRole('button',{name:/重试/}).waitFor()
     assert(calls > beforeOpening)
     unavailable = false

@@ -1,13 +1,11 @@
 import { readPreference, savePreference } from "@/lib/storage"
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react"
 import { Moon, Sun, Tag, Wrench } from "lucide-react"
 
 import { NodeCard } from "@/components/NodeCard"
 import { Summary } from "@/components/Summary"
 import { TrafficRanking } from "@/components/TrafficRanking"
-import { ExpiryReminder } from "@/components/ExpiryReminder"
-import { NodeMap } from "@/components/NodeMap"
-import { VisitorCard } from "@/components/VisitorCard"
+import { FleetTools, compactLayout } from "@/components/FleetTools"
 import { flagPath } from "@/lib/icons"
 import { normalizeCountry } from "@/lib/countries"
 import { Button } from "@/components/ui/button"
@@ -133,6 +131,7 @@ export default function App() {
   const [meError, setMeError] = useState("")
   const { nodes, error, closed, stale, lastUpdatedAt, connection } = useNodes()
   const [open, go] = useNodeRoute()
+  const compact = useSyncExternalStore(compactLayout.subscribe, compactLayout.matches)
   const [rankingHost, setRankingHost] = useState<HTMLDivElement | null>(null)
   const [filters, setFilters] = useState(readFilters)
   const presetTags = parsePresetTags(me?.preset_tag)
@@ -242,7 +241,8 @@ export default function App() {
             <img src="/favicon.svg" alt="" className="size-5 rounded-md" />
             <span className="truncate">{me.site_name || "Monitor"}</span>
           </button>
-          <TrafficRanking nodes={sorted} dockHost={nodes && open === null ? rankingHost : null} stale={stale} />
+          <TrafficRanking nodes={sorted} dockHost={nodes && open === null ? rankingHost : null} compact={compact}
+            headerTrigger={open !== null || !rankingHost} stale={stale} />
           {/* The hub names the panel only to a signed-in caller, so the path
               never appears in the bundle an anonymous visitor downloads. */}
           {me.authed && me.admin_url && (
@@ -287,7 +287,8 @@ export default function App() {
           <>
             <Summary nodes={sorted} stale={stale} />
             <FleetFilters nodes={sorted} entries={regions} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
-            <NodeMap entries={regions} total={sorted.length} selected={region}
+            <FleetTools nodes={sorted} entries={regions} selected={region} compact={compact} visitorEnabled={me.visitor_card !== false}
+              setRankingHost={setRankingHost} onOpenNode={go}
               onPick={code => pick({ region: code === region ? null : code, tag: null })} />
             {(region || tag || status !== "all") && (
               <p className="text-sm text-muted-foreground" role="status">已显示 {shown.length} / {sorted.length} 台 · 顶部统计为全部节点</p>
@@ -304,13 +305,6 @@ export default function App() {
           </>
         )}
       </main>
-      {open === null && <div className="fleet-rail">
-        <div className="fleet-rail-panels">
-          <div ref={setRankingHost} />
-          <ExpiryReminder nodes={sorted} onOpen={go} />
-        </div>
-        {me.visitor_card !== false && <VisitorCard />}
-      </div>}
     </div>
   )
 }

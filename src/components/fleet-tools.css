@@ -1,0 +1,124 @@
+.fleet-tools {
+  --map-text: var(--foreground);
+  --map-secondary: var(--muted-foreground);
+  --map-edge: var(--border);
+  --map-highlight: var(--primary);
+  --map-heading-hover: var(--accent);
+  --tool-bg: var(--card);
+  --tool-amber: #865012;
+  display: grid;
+  gap: .625rem;
+  min-width: 0;
+}
+.dark .fleet-tools { --tool-amber: #f5c886; }
+.fleet-rail, .fleet-rail-panels, .geo-week-panels { display: contents; }
+.fleet-tools :is(.node-map, .fleet-ranking-slot, .visitor-desktop) { min-width: 0; }
+.fleet-tool-switcher {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: .2rem;
+  padding: .2rem;
+  border: 1px solid var(--map-edge);
+  border-radius: .875rem;
+  background: var(--tool-bg);
+}
+.fleet-tool-switcher button {
+  display: flex;
+  gap: .35rem;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  border-radius: .625rem;
+  font-size: .8125rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+.fleet-tool-switcher button svg { width: 1rem; height: 1rem; color: var(--map-highlight); }
+.fleet-tool-switcher button:hover, .visitor-close:hover { background: var(--map-heading-hover); }
+.fleet-tool-switcher button[aria-expanded=true] { background: var(--map-highlight); color: var(--primary-foreground); }
+.fleet-tool-switcher button[aria-expanded=true] svg { color: inherit; }
+.fleet-tool-switcher button:focus-visible, .visitor-close:focus-visible { outline: 2px solid var(--map-highlight); outline-offset: -2px; }
+.fleet-tools .expiry-dock { order: 1; }
+.visitor-desktop {
+  border: 1px solid var(--map-edge);
+  border-radius: 1rem;
+  color: var(--map-text);
+  background: var(--tool-bg);
+  padding: .75rem .875rem;
+  backdrop-filter: blur(12px);
+}
+.visitor-heading, .visitor-list li { display: flex; align-items: center; gap: .55rem; }
+.visitor-icon { display: grid; place-items: center; width: 2rem; height: 2rem; flex: none; border-radius: 50%; background: color-mix(in srgb, var(--map-highlight) 14%, transparent); color: var(--map-highlight); }
+.visitor-icon svg { width: 1.1rem; height: 1.1rem; }
+.visitor-title { font-size: .875rem; font-weight: 650; }
+.visitor-secondary, .visitor-list { color: var(--map-secondary); font-size: .75rem; }
+.visitor-close { display: grid; place-items: center; align-self: start; flex: none; width: 2rem; height: 2rem; margin: -.25rem -.4rem 0 0; border-radius: .5rem; cursor: pointer; }
+.visitor-close svg { width: 1rem; height: 1rem; }
+.visitor-list { display: grid; gap: .5rem; margin-top: .65rem; border-top: 1px solid var(--map-edge); padding-top: .65rem; }
+.visitor-list svg { flex: none; width: .9rem; height: .9rem; }
+
+/* In the content column every open card gets one track. The reminder gets
+   its own line only when the Hub has supplied an upcoming expiration. */
+@media (min-width: 1024px) {
+  .fleet-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+  .fleet-tools:has(.visitor-desktop) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .fleet-tools .expiry-dock { grid-column: 1 / -1; }
+}
+@media (min-width: 1024px) and (width < 1800px), (min-width: 1024px) and (height < 640px) {
+  .fleet-tools { align-items: stretch; }
+  .node-map:has([aria-expanded="false"]), .fleet-ranking-slot:has([aria-expanded="false"]) { align-self: start; }
+  .node-map:has([aria-expanded="true"]), #node-map-body:not([hidden]), .node-map-atlas,
+  .fleet-ranking-slot .traffic-dock, #traffic-dock-body:not([hidden]) { display: flex; flex-direction: column; }
+  #node-map-body:not([hidden]), .node-map-atlas, .fleet-ranking-slot #traffic-dock-body:not([hidden]) { flex: 1; }
+  .node-map-atlas { justify-content: center; }
+  .node-map-caption { margin-top: auto; }
+  .fleet-ranking-slot .traffic-dock { height: 100%; }
+  .fleet-ranking-slot .traffic-dock-more { margin-top: auto; }
+  .weekly-traffic:has(.weekly-plot) { display: flex; flex-direction: column; }
+  .weekly-plot { flex: 1; width: 100%; min-height: 8.3rem; }
+  .visitor-desktop { display: flex; flex-direction: column; }
+  .visitor-list { flex: 1; align-content: space-evenly; }
+  .fleet-ranking-slot .traffic-dock-list li { padding-block: .22rem; gap: .18rem .4rem; }
+  .fleet-ranking-slot .traffic-dock-list { margin-block: .4rem; }
+  .fleet-tools .expiry-dock-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+}
+/* Both gutters must fit before either rail takes space from the node grid. */
+@media (min-width: 1800px) and (min-height: 640px) {
+  .fleet-overview {
+    --fleet-rail-width: 16rem;
+    --fleet-rail-left: max(1rem, calc((100% - 1400px) / 2 - var(--fleet-rail-width)));
+  }
+  .fleet-overview .fleet-frame {
+    width: calc(100% - 2 * (var(--fleet-rail-width) + 1rem));
+    margin-inline: auto;
+  }
+  .fleet-tools {
+    display: contents;
+    --map-text: #f1f5f9;
+    --map-secondary: #cbd5e1;
+    --map-edge: rgb(255 255 255 / 12%);
+    --map-highlight: #b6e8df;
+    --map-heading-hover: rgb(255 255 255 / 8%);
+    --tool-amber: #f5c886;
+    --tool-bg: rgb(15 23 42 / 82%);
+  }
+  .fleet-rail, .geo-week-panels {
+    position: fixed;
+    z-index: 9;
+    top: 5rem;
+    width: var(--fleet-rail-width);
+    max-height: calc(100dvh - 6rem);
+    display: flex;
+    flex-direction: column;
+    gap: .625rem;
+  }
+  .geo-week-panels { right: var(--fleet-rail-left); overflow-y: auto; }
+  .geo-week-panels > * { flex: none; }
+  .fleet-rail { bottom: 1rem; left: var(--fleet-rail-left); pointer-events: none; }
+  .fleet-rail-panels { display: flex; min-height: 0; flex-direction: column; gap: .625rem; }
+  .fleet-rail .visitor-desktop { flex: none; margin-top: auto; pointer-events: auto; }
+}
+@media (width < 400px) {
+  .fleet-tool-switcher button { flex-direction: column; gap: .18rem; font-size: .75rem; }
+}

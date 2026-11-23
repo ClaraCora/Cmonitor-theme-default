@@ -3,17 +3,10 @@ import { useEffect, useState } from "react"
 import { Clock, Globe, MapPin, Monitor, Shield, User, X } from "lucide-react"
 
 import { api } from "@/lib/api"
+import { regionLabel } from "@/lib/countries"
 
 /** What the hub could tell about the caller: an address, and optionally geo. */
-type Visitor = { ip: string; city?: string; region?: string; country?: string; org?: string }
-
-/** Common country codes as names; anything less common shows the code itself. */
-const COUNTRIES: Record<string, string> = {
-  CN: "中国", HK: "香港", MO: "澳门", TW: "台湾", JP: "日本", KR: "韩国", SG: "新加坡",
-  US: "美国", GB: "英国", DE: "德国", FR: "法国", NL: "荷兰", RU: "俄罗斯",
-  AU: "澳大利亚", CA: "加拿大", IN: "印度", MY: "马来西亚", TH: "泰国", VN: "越南",
-  PH: "菲律宾", ID: "印度尼西亚",
-}
+export type Visitor = { ip: string; city?: string; region?: string; country?: string; org?: string }
 
 function osOf(ua: string): string {
   if (/windows/i.test(ua)) return "Windows"
@@ -35,24 +28,31 @@ function browserOf(ua: string): string {
   return "未知浏览器"
 }
 
-/**
- * Who is looking at the page, from their own perspective: their address and
- * approximate origin as the hub reported them, plus what their browser says
- * about itself. A card on the desktop's lower left, a pill on a phone's
- * bottom edge; dismissible on either screen size for the rest of the session.
- */
-export function VisitorCard() {
+/** Visitor details are optional; remember dismissal for the current browser session. */
+export function useVisitor(enabled: boolean) {
   const [visitor, setVisitor] = useState<Visitor | null>(null)
   const [dismissed, setDismissed] = useState(() => readPreference("visitor-card-off", true) === "1")
   useEffect(() => {
-    // Silence on failure: this is a greeting, not a gate, and a status page
-    // that cannot greet still works.
-    api<Visitor>("/visitor").then(setVisitor).catch(() => {})
-  }, [])
-  if (dismissed || !visitor) return null
+    if (!enabled || dismissed || visitor) return
+    const controller = new AbortController()
+    api<Visitor>("/visitor", { signal: controller.signal })
+      .then(data => {
+        if (!controller.signal.aborted && data?.ip) setVisitor(data)
+      })
+      .catch(() => {}) // A failed lookup leaves the space to the other panels.
+    return () => controller.abort()
+  }, [enabled, dismissed, visitor])
 
-  const country = COUNTRIES[visitor.country ?? ""] ?? visitor.country
-  const place = [visitor.city, country].filter((v, i, a) => v && a.indexOf(v) === i).join(", ")
+  function close() {
+    savePreference("visitor-card-off", "1", true)
+    setDismissed(true)
+  }
+  return { visitor: enabled && !dismissed ? visitor : null, close }
+}
+
+export function VisitorCard({ visitor, onClose }: { visitor: Visitor; onClose: () => void }) {
+  const country = visitor.country ? regionLabel(visitor.country) : ""
+  const place = [visitor.city, country].filter((v, i, all) => v && all.indexOf(v) === i).join(", ") || "未知地区"
   const ua = navigator.userAgent
   const rows: { icon: typeof Monitor; text: string }[] = [
     { icon: Monitor, text: osOf(ua) },
@@ -62,60 +62,26 @@ export function VisitorCard() {
     ...(visitor.org ? [{ icon: Shield, text: visitor.org.replace(/^AS\d+\s*/, "") }] : []),
     { icon: Clock, text: new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) },
   ]
-  const close = () => {
-    savePreference("visitor-card-off", "1", true)
-    setDismissed(true)
-  }
-
   return (
-    <>
-      <aside aria-label="来访者信息" className="visitor-desktop fixed bottom-4 left-4 z-40 hidden w-64 rounded-2xl border border-white/10 bg-slate-900/70 p-4 text-slate-100 shadow-xl backdrop-blur-md md:block">
-        <div className="flex items-start gap-2.5">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-400 to-blue-600">
-            <User className="size-5 text-white" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-violet-300">访客</div>
-            <div className="truncate text-xs text-slate-300" title={place}>{place || "未知地区"}</div>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            title="关闭"
-            aria-label="关闭访客信息"
-            className="relative rounded p-0.5 text-slate-400 transition-colors after:absolute after:-inset-3 after:content-[''] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
-          >
-            <X className="size-4" />
-          </button>
+    <aside id="fleet-tool-visitor" aria-label="来访者信息" className="visitor-desktop">
+      <div className="visitor-heading">
+        <span className="visitor-icon" aria-hidden="true"><User /></span>
+        <div className="min-w-0 flex-1">
+          <h2 className="visitor-title">访客</h2>
+          <div className="visitor-secondary truncate" title={place}>{place}</div>
         </div>
-        <ul className="mt-2.5 space-y-2 border-t border-white/10 pt-2.5 text-xs text-slate-300">
-          {rows.map(({ icon: Icon, text }, i) => (
-            <li key={i} className="flex items-center gap-2">
-              <Icon className="size-3.5 shrink-0 text-slate-400" />
-              <span className="truncate" title={text}>{text}</span>
-            </li>
-          ))}
-        </ul>
-      </aside>
-      <aside aria-label="来访者信息" className="fixed bottom-3 left-1/2 z-40 flex max-w-[92vw] -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full border border-white/10 bg-slate-900/70 px-4 py-1.5 text-xs text-slate-100 shadow-lg backdrop-blur-md md:hidden">
-        <Globe className="size-3.5 shrink-0 text-sky-400" />
-        <span className="tnum">{visitor.ip}</span>
-        {(visitor.city || country) && (
-          <>
-            <span className="text-slate-500">|</span>
-            <span className="min-w-0 truncate">{visitor.city || country}</span>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={close}
-          title="关闭"
-          aria-label="关闭访客信息"
-          className="relative shrink-0 rounded p-0.5 text-slate-400 transition-colors after:absolute after:-inset-3 after:content-[''] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
-        >
-          <X className="size-4" />
+        <button type="button" onClick={onClose} title="关闭" aria-label="关闭访客信息" className="visitor-close">
+          <X aria-hidden="true" />
         </button>
-      </aside>
-    </>
+      </div>
+      <ul className="visitor-list">
+        {rows.map(({ icon: Icon, text }, i) => (
+          <li key={i}>
+            <Icon aria-hidden="true" />
+            <span className="truncate" title={text}>{text}</span>
+          </li>
+        ))}
+      </ul>
+    </aside>
   )
 }

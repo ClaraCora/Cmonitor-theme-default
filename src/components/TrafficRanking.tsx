@@ -15,7 +15,13 @@ function total(node: Node): number | null {
 }
 
 /** Every public VPS ranked by the traffic booked to the current calendar day. */
-export function TrafficRanking({ nodes, dockHost, stale }: { nodes: Node[]; dockHost: HTMLElement | null; stale: boolean }) {
+export function TrafficRanking({ nodes, dockHost, stale, compact, headerTrigger }: {
+  nodes: Node[]
+  dockHost: HTMLElement | null
+  stale: boolean
+  compact: boolean
+  headerTrigger: boolean
+}) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => readPreference("traffic-rank-collapsed", true) === "1")
   const dockOpener = useRef<HTMLButtonElement | null>(null)
@@ -29,24 +35,26 @@ export function TrafficRanking({ nodes, dockHost, stale }: { nodes: Node[]; dock
 
   return (
     <DialogPrimitive.Root open={dialogOpen} onOpenChange={setDialogOpen}>
-      <DialogPrimitive.Trigger asChild>
+      {headerTrigger && <DialogPrimitive.Trigger asChild>
         <Button variant="ghost" size="sm">
           <Trophy />
           <span className="hidden sm:inline">今日流量排行</span>
           <span className="sm:hidden">排行</span>
         </Button>
-      </DialogPrimitive.Trigger>
+      </DialogPrimitive.Trigger>}
 
       {dockHost && createPortal(
         <aside className="traffic-dock" aria-label="今日流量排行浮窗">
-          <button type="button" className="traffic-dock-heading" onClick={toggleDock}
+          {compact ? <h2 className="traffic-dock-heading">
+            <ChartNoAxesColumnDecreasing aria-hidden="true" />今日流量排行
+          </h2> : <button type="button" className="traffic-dock-heading" onClick={toggleDock}
             aria-expanded={!collapsed} aria-controls="traffic-dock-body"
             aria-label={collapsed ? "展开今日流量排行" : "收起今日流量排行"}>
             <ChartNoAxesColumnDecreasing aria-hidden="true" />
             <span>今日流量排行</span>
             {collapsed ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
-          </button>
-          <div id="traffic-dock-body" hidden={collapsed}>
+          </button>}
+          <div id="traffic-dock-body" hidden={!compact && collapsed}>
             <p className="traffic-dock-caption">{stale ? "更新中断 · 上次数据" : "上传 + 下载"}</p>
             {ranked.length ? (
               <ol className="traffic-dock-list">
