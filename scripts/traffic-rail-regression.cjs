@@ -92,6 +92,18 @@ async function expectReadableCosts(cost) {
 
 async function checkFullCosts(page, cost, output, mobile = false) {
   const trigger = cost.getByRole('button', {name:'查看完整排行榜', exact:true})
+  const filters = scope => scope.getByRole('group', {name:'消费排行标签', exact:true})
+  const select = (scope, name) => filters(scope).getByRole('button', {name, exact:true}).click()
+  async function expectTotal(scope, name, amount) {
+    assert.equal(await filters(scope).getByRole('button', {pressed:true}).innerText(), name)
+    const currency = scope.getByRole('status', {name:'月费合计', exact:true})
+    assert((await currency.innerText()).includes('¥' + amount), `${name} monthly total should be ¥${amount}`)
+  }
+  assert.deepEqual(await filters(cost).getByRole('button').allTextContents(), ['全部', 'CC', '游走', '未分配'])
+  await expectTotal(cost, '全部', '284.00')
+  await select(cost, 'CC')
+  await expectTotal(cost, 'CC', '108.00')
+  await expectNames(cost.getByRole('list'), ['悉尼 · 北港', '香港 · 海湾', '东京 · 青叶'])
   if (mobile) await trigger.tap()
   else {
     await trigger.focus()
@@ -99,6 +111,13 @@ async function checkFullCosts(page, cost, output, mobile = false) {
   }
   const dialog = page.getByRole('dialog', {name:'本月消费排行', exact:true})
   const rows = dialog.getByRole('list').getByRole('listitem')
+  await expectTotal(dialog, 'CC', '108.00')
+  assert.equal(await rows.count(), 3, 'the full ranking opens in the tag chosen on the dashboard')
+  await select(dialog, '未分配')
+  await expectTotal(dialog, '未分配', '0.00')
+  assert.equal(await rows.count(), 0)
+  await select(dialog, '全部')
+  await expectTotal(dialog, '全部', '284.00')
   const all = [...monthlyTopFive, ['东京 · 青叶', '28.00'], ['东京 · 备用', '28.00'], ['未定位节点', '28.00']]
   await rows.last().waitFor()
   assert.equal(await rows.count(), all.length, 'all and only public nodes with a recurring cost are included')
@@ -111,10 +130,15 @@ async function checkFullCosts(page, cost, output, mobile = false) {
   const {width, height} = page.viewportSize()
   assert(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height + 1)
   await dialog.screenshot({animations:'disabled',path:path.join(output,`monthly-costs-${mobile ? 'mobile' : 'desktop'}.png`)})
+  await select(dialog, '游走')
+  await expectTotal(dialog, '游走', '116.00')
+  await expectNames(dialog.getByRole('list'), ['伦敦 · 西区', '新加坡 · 南岸', '香港 · 海湾'])
   if (mobile) await dialog.getByRole('button', {name:/关闭/}).tap()
   else await page.keyboard.press('Escape')
   await dialog.waitFor({state:'hidden'})
   await page.waitForFunction(el => el === document.activeElement, await trigger.elementHandle(), {timeout:3000})
+  await expectTotal(cost, '游走', '116.00')
+  await select(cost, '全部')
 }
 
 async function checkMapNavigation(page, map) {
@@ -251,7 +275,8 @@ async function checkNodeMap(page, output) {
   await toggle.click()
 
   const titles = ['节点地图','近 7 天流量','今日流量排行','本月消费排行']
-  const tools = titles.map(name => page.getByRole('button',{name,exact:true}))
+  const switcher = page.getByRole('group', {name:'首页工具',exact:true})
+  const tools = titles.map(name => switcher.getByRole('button',{name,exact:true}))
   for (const [width,height] of [[1023,768], [390,844], [320,720]]) {
     await page.setViewportSize({width,height})
     const boxes = []
@@ -350,13 +375,14 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
   const today = Math.floor(Date.now() / 86400000) * 86400
   const now = today + 12 * 3600
   const expiryOffsets = [10, 0, -1, 11, 4, null, 2, 1]
+  const costTags = ['CC<blue>', 'CC;游走<green>', '游走备用', '游走', '游走', 'CC', 'CC;游走', 'CC;游走']
   const fixtures = fleet.map(([name, country, rx, tx], index) => ({
     ...previous[0], name, country, id: index + 1, sort: index, public: index < 7,
     day_rx: rx * GiB, day_tx: tx * GiB, total_rx: rx * 8 * GiB, total_tx: tx * 10 * GiB,
     month_rx: rx * 2 * GiB, month_tx: tx * 2 * GiB, traffic_limit: 1024 * GiB,
     expires_at: expiryOffsets[index] === null ? null : new Date((today + expiryOffsets[index] * 86400) * 1000).toISOString().slice(0,10),
     permanent: index === 6, valuation_at: now, billing_timezone: 'UTC',
-    currency: 'CNY', price: 28 + index * 4, tags: ['双栈;1Gbps','游走;2Gbps','备用;1Gbps'][index % 3],
+    currency: 'CNY', price: 28 + index * 4, tags: costTags[index],
     metrics: {...previous[0].metrics, cpu: 7 + index * 4, mem_total: 4 * GiB, mem_used: (0.5 + index / 4) * GiB,
       disk_total: 40 * GiB, disk_used: (6 + index * 2) * GiB, net_rx: (index + 1) * 125000, net_tx: (8 - index) * 70000},
     pings: [{id:1,name:'Cloudflare',latency:12 + index,updated_at:now,samples:[11,14,12,11,15,13,12,13]}],
@@ -365,7 +391,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
   Object.assign(fixtures[5], {currency:'USD', price:6})
   Object.assign(fixtures[3], {billing_cycle:'yearly', price:480})
   fixtures[7].country = 'FR' // A private node must not introduce a visible region.
-  const tokyoBackup = {...fixtures[0], id:20, name:'东京 · 备用', online:false, day_rx:0, day_tx:0, expires_at:null}
+  const tokyoBackup = {...fixtures[0], id:20, name:'东京 · 备用', tags:'备用', online:false, day_rx:0, day_tx:0, expires_at:null}
   const unknown = {...tokyoBackup, id:21, name:'未定位节点', country:'', online:true}
   nodes.splice(0, nodes.length, ...fixtures, tokyoBackup, unknown)
   const page = await context.newPage()

@@ -291,7 +291,7 @@ export default function App() {
           <>
             <Summary nodes={sorted} stale={stale} exchange={exchange} />
             <FleetFilters nodes={sorted} entries={regions} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
-            <FleetTools nodes={sorted} plans={plans} exchange={exchange} entries={regions} selected={region} compact={compact} visitorEnabled={me.visitor_card !== false}
+            <FleetTools nodes={sorted} plans={plans} presetTags={presetTags} exchange={exchange} entries={regions} selected={region} compact={compact} visitorEnabled={me.visitor_card !== false}
               setRankingHost={setRankingHost} onOpenNode={go}
               onPick={code => pick({ region: code === region ? null : code, tag: null })} />
             {(region || tag || status !== "all") && (

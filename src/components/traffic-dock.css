@@ -146,3 +146,68 @@ h2.traffic-dock-heading { cursor: default; }
   .fleet-tools:has(.expiry-dock) .fleet-rail-panels .traffic-dock-list li { padding-block: .2rem; }
   .geo-week-panels .cost-dock .traffic-dock-track { display: none; }
 }
+
+.cost-summary {
+  display: grid;
+  flex: none;
+  gap: .375rem;
+  min-width: 0;
+  margin: .375rem .875rem 0;
+}
+.cost-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+  max-height: 4.5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.cost-tags button {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: .25rem .55rem;
+  border: 1px solid var(--map-edge, var(--border));
+  border-radius: .4rem;
+  color: var(--map-secondary, var(--muted-foreground));
+  font-size: .75rem;
+  line-height: 1.125rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cost-tags button:hover { background: var(--map-heading-hover, var(--accent)); }
+.cost-tags button[aria-pressed="true"] {
+  background: var(--map-text, var(--foreground));
+  border-color: transparent;
+  color: var(--cost-selected-ink, var(--background));
+}
+.geo-week-panels .cost-tags button[aria-pressed="true"] {
+  background: var(--map-highlight);
+  color: var(--cost-selected-ink);
+}
+.cost-dock { --cost-selected-ink: white; }
+.dark .cost-dock { --cost-selected-ink: #0f172a; }
+@media (min-width: 1800px) and (min-height: 760px) {
+  .cost-dock { --cost-selected-ink: #0f172a; }
+}
+.cost-tags button:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+.cost-total { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+.cost-total > span {
+  flex: none;
+  color: var(--map-secondary, var(--muted-foreground));
+  font-size: .75rem;
+}
+.cost-total strong {
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+.cost-dialog-summary { padding: .75rem 1rem; border-bottom: 1px solid var(--border); }
+.cost-dialog-summary .cost-summary { margin: 0; gap: .625rem; }
+.cost-dialog-summary .cost-total strong { font-size: 1.25rem; }
+.cost-dialog-summary .cost-retry { margin-top: .375rem; padding-inline: 0; }
+@media (pointer: coarse) {
+  .cost-tags button { min-height: 2.125rem; }
+}

@@ -29,6 +29,7 @@ type Tool = typeof tools[number]["key"]
 
 type Props = {
   nodes: Node[]
+  presetTags: string[]
   plans: MonthlyPlan[]
   exchange: ExchangeState
   entries: [string, number][]
@@ -40,7 +41,7 @@ type Props = {
   setRankingHost: (host: HTMLDivElement | null) => void
 }
 
-export function FleetTools({ nodes, plans, exchange, entries, selected, onPick, onOpenNode, visitorEnabled, compact, setRankingHost }: Props) {
+export function FleetTools({ nodes, plans, presetTags, exchange, entries, selected, onPick, onOpenNode, visitorEnabled, compact, setRankingHost }: Props) {
   const { visitor, close } = useVisitor(visitorEnabled)
   const [active, setActive] = useState<Tool | null>(null)
   const shown = (tool: Tool) => !compact || active === tool
@@ -60,7 +61,7 @@ export function FleetTools({ nodes, plans, exchange, entries, selected, onPick, 
         {shown("map") && <NodeMap compact={compact} entries={entries} total={nodes.length} selected={selected} onPick={onPick} />}
         <ExpiryReminder nodes={nodes} onOpen={onOpenNode} />
       </div>
-      {shown("cost") && <CostRanking plans={plans} nodeCount={nodes.length} exchange={exchange} onOpenNode={onOpenNode} />}
+      {shown("cost") && <CostRanking nodes={nodes} plans={plans} presetTags={presetTags} exchange={exchange} onOpenNode={onOpenNode} />}
     </div>
     <div className="fleet-rail">
       <div className="fleet-rail-panels">

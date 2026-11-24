@@ -1,4 +1,5 @@
 import type { Node } from "./api"
+import { hasTag } from "./tags.ts"
 
 type Plan = Pick<Node, "price" | "currency" | "billing_cycle" | "expires_at" | "permanent" | "expires_at_epoch" | "billing_period_start_epoch" | "valuation_at">
 
@@ -23,7 +24,9 @@ export function monthlyCost(node: Pick<Node, "price" | "billing_cycle" | "perman
 
 export type MonthlyPlan = { id: number; name: string; monthly: number; currency: string }
 
-export function collectMonthlyPlans(nodes: Node[]): MonthlyPlan[] {
+type PricedNode = Pick<Node, "id" | "name" | "price" | "currency" | "billing_cycle" | "permanent">
+
+export function collectMonthlyPlans(nodes: PricedNode[]): MonthlyPlan[] {
   const plans: MonthlyPlan[] = []
   for (const node of nodes) {
     const monthly = monthlyCost(node)
@@ -33,6 +36,40 @@ export function collectMonthlyPlans(nodes: Node[]): MonthlyPlan[] {
     }
   }
   return plans
+}
+
+// Match the displayed CNY amount, including decimal half cents such as
+// 1.005, for which rounding the result of a binary multiply can lose a cent.
+const decimalCny = new Intl.NumberFormat("en-US", {
+  useGrouping: false, minimumFractionDigits: 2, maximumFractionDigits: 2,
+})
+const displayedCents = (value: number) => Number(decimalCny.format(value).replace(".", ""))
+
+export function monthlyRanking(
+  nodes: Pick<Node, "id" | "public" | "tags">[], plans: MonthlyPlan[], tag: string | null,
+  rates?: Record<string, number>,
+) {
+  const members = new Set(nodes.filter(node => node.public && (tag === null || hasTag(node.tags, tag))).map(node => node.id))
+  const nodeCount = members.size
+  const rows: { id: number; name: string; cny: number }[] = []
+  let needsExchange = false
+  let cents = 0
+  for (const { id, name, currency, monthly } of plans) {
+    if (!members.delete(id)) continue
+    needsExchange ||= currency !== "CNY"
+    const cny = valueInCny([[currency, monthly]], rates).total
+    if (cny === null || cny <= 0) continue
+    const rowCents = displayedCents(cny)
+    if (!Number.isSafeInteger(rowCents)) continue
+    rows.push({ id, name, cny })
+    cents += rowCents
+  }
+  rows.sort((a, b) => b.cny - a.cny)
+  let total: number | null = null
+  if ((rows.length || !nodeCount) && Number.isSafeInteger(cents) && displayedCents(cents / 100) === cents) {
+    total = cents / 100
+  }
+  return { rows, total, omitted: nodeCount - rows.length, nodeCount, needsExchange }
 }
 
 /** Unused prepaid service, estimated at the current plan's price. */

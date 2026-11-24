@@ -1,3 +1,4 @@
+import type { ReactNode } from "react"
 import { ChevronRight, Wallet } from "lucide-react"
 import { Dialog } from "radix-ui"
 
@@ -11,13 +12,15 @@ export function formatMonthlyCny(amount: number): string {
 
 type Props = {
   rows: { id: number; name: string; cny: number }[]
+  summary: ReactNode
+  empty: string
   omitted: number
   onOpenNode: (id: number) => void
 }
 
-export function CostRankingDialog({ rows, omitted, onOpenNode }: Props) {
+export function CostRankingDialog({ rows, omitted, onOpenNode, summary, empty }: Props) {
   const description = `按套餐价格折算人民币月费（CNY），已计入 ${rows.length} 台 VPS${omitted ? `，另有 ${omitted} 台未计入` : ""}。`
-  return <RankingDialog title="本月消费排行" icon={Wallet} compact description={description}>
+  return <RankingDialog title="本月消费排行" icon={Wallet} compact description={description} summary={summary}>
     {rows.length ? <ol aria-label="节点月费排行" className="divide-y">
       {rows.map(({ id, name, cny }, index) => <li key={id}>
         <Dialog.Close asChild>
@@ -30,6 +33,6 @@ export function CostRankingDialog({ rows, omitted, onOpenNode }: Props) {
           </button>
         </Dialog.Close>
       </li>)}
-    </ol> : <p className="px-4 py-12 text-center text-sm text-muted-foreground">暂无可计算月费的节点</p>}
+    </ol> : <p className="px-4 py-12 text-center text-sm text-muted-foreground">{empty}</p>}
   </RankingDialog>
 }

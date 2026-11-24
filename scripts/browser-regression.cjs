@@ -150,6 +150,8 @@ async function main() {
       await page.reload()
       await valueTile.getByRole('button',{name:'汇率获取失败，重试',exact:true}).waitFor()
       assert.equal(await valueTile.locator('dd').count(),0,'failed conversion never displays a partial total')
+      const costTotal=page.getByRole('region',{name:'本月消费排行榜',exact:true}).getByRole('status',{name:'月费合计',exact:true})
+      assert((await costTotal.innerText()).includes('—'),'an unavailable foreign-currency total is distinct from zero')
       exchangeFail=false
       await valueTile.getByRole('button',{name:'汇率获取失败，重试',exact:true}).click()
       await valueTile.getByText('CNY',{exact:true}).waitFor()
@@ -297,6 +299,11 @@ async function main() {
         await page.screenshot({animations:'disabled',path:path.join(output,`preset-mobile-${width}.png`)})
       }
       await page.setViewportSize({width:1440,height:1000})
+      const costTags=page.getByRole('region',{name:'本月消费排行榜',exact:true}).getByRole('group',{name:'消费排行标签',exact:true})
+      const lastCostPreset=costTags.getByRole('button',{name:'预设标签12',exact:true})
+      await lastCostPreset.click()
+      assert.equal(await lastCostPreset.getAttribute('aria-pressed'),'true','the last configured tag remains reachable on a narrow card')
+      assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)
       await page.screenshot({animations:'disabled',path:path.join(output,'multiple-presets-desktop.png')})
       me.preset_tag='游走'; nodes[0].tags='游走<green>; 1Gbps'
       await page.goto(origin+'/')
@@ -320,7 +327,10 @@ async function main() {
       await page.goto(origin+'/')
     }
     if (mode === 'theme') await require('./card-history-regression.cjs')(browser,origin,nodes[0],me)
-    if (mode === 'theme') await require('./traffic-rail-regression.cjs')(context, origin, nodes, output)
+    if (mode === 'theme') {
+      me.preset_tag='CC;游走;未分配'
+      await require('./traffic-rail-regression.cjs')(context, origin, nodes, output)
+    }
     if (mode === 'theme') await require('./live-stream-regression.cjs')(context, origin, nodes)
     // A denied Storage API must not blank either app (including restore status).
     await context.addInitScript(()=>{
