@@ -141,8 +141,8 @@ h2.traffic-dock-heading { cursor: default; }
 
 /* Give reminders room in short desktop windows while keeping all five ranks. */
 @media (min-width: 1800px) and (min-height: 760px) and (max-height: 820px) {
-  .fleet-rail-panels:has(.expiry-dock) .traffic-dock-track { display: none; }
-  .fleet-rail-panels:has(.expiry-dock) .traffic-dock-list { margin-block: .25rem; }
-  .fleet-rail-panels:has(.expiry-dock) .traffic-dock-list li { padding-block: .2rem; }
+  .fleet-tools:has(.expiry-dock) .fleet-rail-panels .traffic-dock-track { display: none; }
+  .fleet-tools:has(.expiry-dock) .fleet-rail-panels .traffic-dock-list { margin-block: .25rem; }
+  .fleet-tools:has(.expiry-dock) .fleet-rail-panels .traffic-dock-list li { padding-block: .2rem; }
   .geo-week-panels .cost-dock .traffic-dock-track { display: none; }
 }

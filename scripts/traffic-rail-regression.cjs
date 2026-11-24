@@ -388,13 +388,20 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await checkFullCosts(page, cost, output)
     const costBox = await cost.boundingBox()
     const weekBox = await page.getByRole('region', {name:'近 7 天流量', exact:true}).boundingBox()
-    assert(Math.abs(costBox.x - weekBox.x) <= 2 && costBox.y >= weekBox.y + weekBox.height,
-      'cost ranking follows the weekly chart in the right gutter')
+    const expiryBox = await expiry.boundingBox()
+    const rankBox = await rail.boundingBox()
+    assert(rankBox.y + rankBox.height <= weekBox.y + 1,
+      'today ranking stays above weekly traffic in the left gutter')
+    assert(weekBox.x + weekBox.width <= expiryBox.x + 1,
+      'weekly traffic stays in the left gutter when the expiry reminder moves right')
+    assert(Math.abs(costBox.x - expiryBox.x) <= 2 && costBox.y >= expiryBox.y + expiryBox.height,
+      'expiry reminders and cost ranking share the right gutter')
     assert(page.viewportSize().height - costBox.y - costBox.height <= 32, 'cost ranking sits at the bottom of the right gutter')
     await expectNames(expiry, expectedDue)
     await expiry.getByRole('button', {name:/香港 · 海湾/}).getByText('今天到期', {exact:true}).waitFor()
     await expiry.getByRole('button', {name:/东京 · 青叶/}).getByText('剩 10 天', {exact:true}).waitFor()
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, page.getByRole('region', {name:'近 7 天流量', exact:true}))
     await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
     await checkNodeMap(page, output)
@@ -427,11 +434,14 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     const shortCost = await cost.boundingBox()
     assert(page.viewportSize().height - shortCost.y - shortCost.height <= 32)
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, page.getByRole('region', {name:'近 7 天流量', exact:true}))
     await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
 
-    const rankBox = await rail.boundingBox()
-    assert(!intersects(rankBox, await expiry.boundingBox()), 'the two panels have separate space')
+    const shortRankBox = await rail.boundingBox()
+    const shortWeekBox = await page.getByRole('region', {name:'近 7 天流量', exact:true}).boundingBox()
+    assert(shortRankBox.y + shortRankBox.height <= shortWeekBox.y + 1, 'short desktop keeps the left rail order')
+    assert(!intersects(shortRankBox, await expiry.boundingBox()), 'the two panels have separate space')
     await page.screenshot({animations:'disabled',path:path.join(output,'traffic-expiry-1800.png')})
 
     // All reminders must remain reachable even when a short desktop cannot fit the list.
@@ -441,15 +451,18 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await expiry.getByText('同日到期 12', {exact:true}).waitFor()
     for (const node of extra) assert.equal(await expiry.getByText(node.name, {exact:true}).count(), 1)
     const lastDue = expiry.getByText('东京 · 青叶', {exact:true})
-    await expiry.getByText(expectedDue[0], {exact:true}).hover()
-    await page.mouse.wheel(0, 1800)
+    await expiry.locator('.expiry-dock-list').evaluate(el => {
+      el.scrollTop = el.scrollHeight
+      const scroller = el.closest('.geo-week-overview')
+      if (scroller) scroller.scrollTop = scroller.scrollHeight
+    })
     await page.waitForFunction(el => {
       const r = el.getBoundingClientRect()
       return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
     }, await lastDue.elementHandle())
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, page.getByRole('region', {name:'近 7 天流量', exact:true}))
     await expectClearGutter(page, cost)
-    await expectClearGutter(page, expiry)
 
     await lastDue.click()
     await page.getByRole('button', {name:'刷新图表',exact:true}).waitFor()

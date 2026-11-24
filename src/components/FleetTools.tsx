@@ -58,14 +58,14 @@ export function FleetTools({ nodes, plans, exchange, entries, selected, onPick, 
     <div className="geo-week-panels">
       <div className="geo-week-overview">
         {shown("map") && <NodeMap compact={compact} entries={entries} total={nodes.length} selected={selected} onPick={onPick} />}
-        <WeeklyTraffic visible={shown("week")} selected={selected} />
+        <ExpiryReminder nodes={nodes} onOpen={onOpenNode} />
       </div>
       {shown("cost") && <CostRanking plans={plans} nodeCount={nodes.length} exchange={exchange} onOpenNode={onOpenNode} />}
     </div>
     <div className="fleet-rail">
       <div className="fleet-rail-panels">
         <div id="fleet-tool-rank" className="fleet-ranking-slot" hidden={!shown("rank")} ref={setRankingHost} />
-        {shown("rank") && <ExpiryReminder nodes={nodes} onOpen={onOpenNode} />}
+        <WeeklyTraffic visible={shown("week")} selected={selected} />
       </div>
       {visitor && <VisitorCard visitor={visitor} onClose={close} />}
     </div>

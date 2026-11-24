@@ -99,7 +99,7 @@ async function checkWeekly(context, origin, output) {
     assert.equal(calls, firstCalls, 'all region changes use the same server snapshot')
     const mapBox = await map.boundingBox()
     const chartBox = await chart.boundingBox()
-    assert(chartBox.y >= mapBox.y + mapBox.height - 1, 'chart appears below the map')
+    assert(chartBox.x + chartBox.width <= mapBox.x + 1, 'chart appears in the left gutter beside the map')
 
     await page.setViewportSize({width:320,height:720})
     unavailable = true
