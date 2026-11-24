@@ -53,11 +53,6 @@ const RANGES = [
   { hours: 168, label: "7 天" },
 ]
 
-// Latency stops at a day. A week-wide bucket would still carry the spread and the
-// loss figure, but a week of probe history is outside this page's purpose, and
-// these are the windows in which every ping remains on the chart.
-const RANGES_FOR = { resources: RANGES, latency: RANGES.filter((r) => r.hours <= 24) }
-
 const AXIS = { stroke: "currentColor", fontSize: 11, tickLine: false, axisLine: false }
 
 // No grow-in animation: it would spend 1.5 s drawing a line across the panel on
@@ -264,8 +259,8 @@ export function NodeDetail({ node }: { node: Node }) {
   // different questions.
   const [ranges, setRanges] = useState(() => {
     const range = Number(new URLSearchParams(location.search).get("range"))
-    return { resources: tab === "resources" && RANGES_FOR.resources.some(r => r.hours === range) ? range : 6,
-      latency: tab === "latency" && RANGES_FOR.latency.some(r => r.hours === range) ? range : 6 }
+    return { resources: tab === "resources" && RANGES.some(r => r.hours === range) ? range : 6,
+      latency: tab === "latency" && RANGES.some(r => r.hours === range) ? range : 6 }
   })
   const navigateChart = (nextTab: typeof tab, range = ranges[nextTab]) => {
     const p = new URLSearchParams(location.search)
@@ -279,7 +274,7 @@ export function NodeDetail({ node }: { node: Node }) {
       const t = p.get("tab") === "latency" ? "latency" : "resources"
       const range = Number(p.get("range"))
       setTab(t)
-      setRanges(all => ({ ...all, [t]: RANGES_FOR[t].some(r => r.hours === range) ? range : 6 }))
+      setRanges(all => ({ ...all, [t]: RANGES.some(r => r.hours === range) ? range : 6 }))
     }
     addEventListener("popstate", sync)
     return () => removeEventListener("popstate", sync)
@@ -293,8 +288,7 @@ export function NodeDetail({ node }: { node: Node }) {
   const previousHistory = useRef<typeof data>(null)
   // Retained rather than folded into an empty result: a refused request and an
   // empty window are different answers, and the hub has reason to refuse this one
-  // -- it caps how many history windows it builds concurrently, since each holds
-  // the connection the agents report through. Rendered as an empty window, a 503
+  // -- it caps how many history windows it builds concurrently. Rendered as an empty window, a 503
   // would misdirect the reader.
   const refreshHistory = useRef<() => void>(() => {})
   const [refreshing, setRefreshing] = useState(false)
@@ -529,7 +523,7 @@ export function NodeDetail({ node }: { node: Node }) {
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="inline-flex gap-0.5 rounded-lg bg-muted p-0.5">
-            {RANGES_FOR[tab].map((r) => (
+            {RANGES.map((r) => (
               <Tab
                 key={r.hours}
                 active={hours === r.hours}

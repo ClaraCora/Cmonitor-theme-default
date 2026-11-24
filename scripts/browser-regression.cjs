@@ -302,6 +302,16 @@ async function main() {
       await page.goto(origin+'/')
       await page.getByRole('heading',{name:nodes[0].name,exact:true}).waitFor()
       assert.equal(await filters.getByRole('button',{name:'游走 1',exact:true}).count(),1,'existing single-preset settings remain compatible')
+      await page.goto(origin+`/node/${nodes[0].id}?tab=latency`)
+      const weekPing = response => {
+        const url = new URL(response.url())
+        return url.pathname === `/api/nodes/${nodes[0].id}/metrics` &&
+          url.searchParams.get('hours') === '168' && url.searchParams.get('series') === 'ping'
+      }
+      await Promise.all([page.waitForResponse(weekPing), page.getByRole('button',{name:'7 天',exact:true}).click()])
+      assert.equal(new URL(page.url()).searchParams.get('range'), '168')
+      await Promise.all([page.waitForResponse(weekPing), page.reload()])
+      await page.locator('.recharts-line-curve[d]').first().waitFor()
       dnsOnly=true
       await page.goto(origin+`/node/${nodes[0].id}?tab=latency`)
       await page.getByText('DNS 错误 4 次（未计入丢包）',{exact:true}).waitFor()
