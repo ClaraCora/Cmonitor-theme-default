@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ArrowDown, ArrowUp, CalendarDays, Cpu, Globe, HardDrive, MemoryStick } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -128,84 +128,94 @@ const HISTORY_TTL = 55_000
 // minute.
 const RETRY_TTL = 8_000
 const pingHistoryCache = new Map<number, { at: number; data: PingHistory | null }>()
-const pingHistoryInflight = new Map<number, Promise<PingHistory | null>>()
-
-// The hub builds at most four history windows at a time and refuses the rest
-// with a 503, since each holds the connection its agents report through. A
-// page of cards mounts together, so its requests are paced here rather than
-// allowed to stampede that gate.
+// Reserve at most two of the Hub's four history slots for the card list.
+// A card can leave the viewport before its turn, so pending jobs are removable.
 let historyActive = 0
-const historyQueue: (() => void)[] = []
-async function historySlot<T>(run: () => Promise<T>): Promise<T> {
-  if (historyActive >= 2) await new Promise<void>((release) => historyQueue.push(release))
-  historyActive++
-  try {
-    return await run()
-  } finally {
-    historyActive--
-    historyQueue.shift()?.()
+const historyQueue = new Set<() => void>()
+function queueHistory(run: () => Promise<void>) {
+  const start = () => {
+    historyQueue.delete(start)
+    historyActive++
+    void run().finally(() => {
+      historyActive--
+      historyQueue.values().next().value?.()
+    })
   }
+  if (historyActive < 2) start()
+  else historyQueue.add(start)
+  return () => { historyQueue.delete(start) }
 }
 
-const wait = (ms: number) => new Promise<void>((done) => setTimeout(done, ms))
+function usePingHistory(nodeId: number, hasProbes: boolean) {
+  const area = useRef<HTMLDivElement>(null)
+  const [hist, setHist] = useState<PingHistory | null>(() => pingHistoryCache.get(nodeId)?.data ?? null)
+  useEffect(() => {
+    if (!hasProbes || !area.current) return
+    const card = area.current.closest(".node-card") ?? area.current
+    let nearby = false
+    let active = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let cancelQueued: (() => void) | undefined
+    let controller: AbortController | undefined
 
-/** The node's two hours of probe buckets, or null when the hub would not
- * answer. A refusal is retried before it is believed: the gate's 503 marks a
- * busy moment, not a missing history. */
-function loadPingHistory(nodeId: number): Promise<PingHistory | null> {
-  const cached = pingHistoryCache.get(nodeId)
-  if (cached && Date.now() - cached.at < (cached.data ? HISTORY_TTL : RETRY_TTL)) {
-    return Promise.resolve(cached.data)
-  }
-  const running = pingHistoryInflight.get(nodeId)
-  if (running) return running
-  const request = (async () => {
-    try {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          const data = await historySlot(() =>
-            api<PingHistory>(`/nodes/${nodeId}/metrics?hours=2&points=60&series=ping`),
-          )
-          pingHistoryCache.set(nodeId, { at: Date.now(), data })
-          return data
-        } catch {
-          if (attempt >= 3) {
-            pingHistoryCache.set(nodeId, { at: Date.now(), data: null })
-            return null
-          }
-          await wait(1_500 * (attempt + 1))
+    function stop() {
+      active = false
+      clearTimeout(timer)
+      cancelQueued?.()
+      controller?.abort()
+    }
+
+    function load(attempt: number) {
+      if (!active || document.hidden) return
+      const cached = pingHistoryCache.get(nodeId)
+      if (cached) {
+        const remaining = cached.at + (cached.data ? HISTORY_TTL : RETRY_TTL) - Date.now()
+        if (remaining > 0) {
+          if (cached.data) setHist(cached.data)
+          timer = setTimeout(() => load(0), remaining)
+          return
         }
       }
-    } finally {
-      pingHistoryInflight.delete(nodeId)
+      cancelQueued = queueHistory(async () => {
+        if (!active || document.hidden) return
+        const request = new AbortController()
+        controller = request
+        try {
+          const data = await api<PingHistory>(`/nodes/${nodeId}/metrics?hours=2&points=60&series=ping`, {signal: request.signal})
+          if (request.signal.aborted) return
+          pingHistoryCache.set(nodeId, { at: Date.now(), data })
+          setHist(data)
+          timer = setTimeout(() => load(0), 60_000)
+        } catch {
+          if (request.signal.aborted) return
+          if (attempt < 3) timer = setTimeout(() => load(attempt + 1), 1_500 * (attempt + 1))
+          else {
+            pingHistoryCache.set(nodeId, { at: Date.now(), data: null })
+            timer = setTimeout(() => load(0), 60_000)
+          }
+        }
+      })
     }
-  })()
-  pingHistoryInflight.set(nodeId, request)
-  return request
-}
 
-function usePingHistory(nodeId: number) {
-  const [hist, setHist] = useState<PingHistory | null>(() => {
-    const cached = pingHistoryCache.get(nodeId)
-    return cached?.data && Date.now() - cached.at < HISTORY_TTL ? cached.data : null
-  })
-  useEffect(() => {
-    let active = true
-    const load = () => { if (document.hidden) return; loadPingHistory(nodeId).then((d) => {
-      // A refusal keeps whatever the card already shows, live samples
-      // included; replacing a genuine answer with nothing would be worse.
-      if (active && d) setHist(d)
-    }) }
-    load()
-    const timer = setInterval(load, 60_000)
-    document.addEventListener("visibilitychange", load)
-    return () => {
-      active = false
-      clearInterval(timer)
-      document.removeEventListener("visibilitychange", load)
+    function sync() {
+      if (nearby && !document.hidden) {
+        if (!active) { active = true; load(0) }
+      } else stop()
     }
-  }, [nodeId])
-  return hist
+
+    const observer = new IntersectionObserver(([entry]) => {
+      nearby = entry.isIntersecting
+      sync()
+    }, {rootMargin: "100px 0px"})
+    observer.observe(card)
+    document.addEventListener("visibilitychange", sync)
+    return () => {
+      observer.disconnect()
+      document.removeEventListener("visibilitychange", sync)
+      stop()
+    }
+  }, [nodeId, hasProbes])
+  return { area, hist }
 }
 
 /** One bar in a probe strip: height against the row's own peak, so a fast
@@ -233,7 +243,7 @@ const clock = (ts: number) =>
 
 function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => void }) {
   const pings = node.pings ?? []
-  const hist = usePingHistory(node.id)
+  const { area, hist } = usePingHistory(node.id, pings.length > 0)
   if (!pings.length) return null
   const text = (latency: number | null) => {
     if (latency === null) return "text-muted-foreground"
@@ -246,6 +256,7 @@ function Latency({ node, onOpenLatency }: { node: Node; onOpenLatency: () => voi
     <div
       role="button"
       tabIndex={0}
+      ref={area}
       title="查看网络延迟"
       onClick={(e) => {
         e.stopPropagation()

@@ -37,3 +37,25 @@ try {
   assert.equal(calls, 1)
 } finally { globalThis.fetch = originalFetch }
 console.log("request deadline, cancellation and Headers compatibility passed")
+
+const { nextSnapshot, decodeFrame } = await import("./live.ts")
+const n1 = { ...node, pings: [{ id: 4, name: "example", latency: 9, updated_at: 1, samples: [8,9] }] }
+const n2 = { ...node, id: 2 }
+const full = nextSnapshot(null, {nodes:[n1,n2],seq:7})
+const payload = { base:7,seq:9,at:99,drop:[2],put:[{ ...node,id:3 }],order:[3,1],
+  patch:[{id:1,set:{name:"renamed"},metrics:{cpu:15},pings:[[4,{samples:[9,15],latency:15}]]}] }
+const { gzipSync } = await import("node:zlib")
+const text = JSON.stringify(payload)
+const data = new Uint8Array(gzipSync(text)).buffer
+const states = await Promise.all([text, data].map(async input=>nextSnapshot(full, await decodeFrame(input))))
+assert.deepEqual(states[0], states[1])
+assert.deepEqual(states[0].nodes.map(n=>[n.id,n.valuation_at]),[[3,99],[1,99]])
+assert.equal(states[0].nodes[1].metrics?.cpu,15)
+assert.deepEqual(states[0].nodes[1].pings?.[0],{id:4,name:"example",updated_at:1,latency:15,samples:[9,15]})
+assert.equal(full.nodes[0].metrics?.cpu,1)
+assert.deepEqual(full.nodes[0].pings?.[0].samples,[8,9])
+assert.equal(nextSnapshot(full,{nodes:[n2]}).seq,null)
+for (const invalid of [{base:6,seq:9,at:100},{base:7,seq:7,at:100},{base:7,seq:9,at:100,order:[1,1]},
+  {base:7,seq:9,at:100,patch:[{id:9}]}]) assert.throws(()=>nextSnapshot(full,invalid))
+assert.throws(()=>nextSnapshot(nextSnapshot(null,{nodes:[n1]}),{base:7,seq:9,at:100}))
+console.log("full, legacy, gzip and text deltas, ordering, missing bases, immutable pings passed")

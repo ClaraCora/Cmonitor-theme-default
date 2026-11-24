@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { decodeFrame, nextSnapshot, type Snapshot } from "./live.ts"
 
 export type Metrics = {
   uptime: number
@@ -172,71 +173,108 @@ export function useNodes() {
 
   useEffect(() => {
     let socket: WebSocket | null = null
-    let poll: ReturnType<typeof setInterval> | null = null
-    let retry: ReturnType<typeof setTimeout> | null = null
-    let closed = false
-    let lastReceived = Date.now()
-
+    let request: AbortController | null = null
+    let retry: ReturnType<typeof setTimeout> | undefined
+    let timer: ReturnType<typeof setInterval> | undefined
+    let lastFrame = 0
+    let lastPoll = 0
+    let streaming = false
+    let running = false
     const receive = (list: Node[]) => {
-      if (closed || !Array.isArray(list)) return
-      lastReceived = Date.now()
-      setLastUpdatedAt(lastReceived)
       const safe = safeNodes(list)
       sample(safe)
       setNodes(safe)
+      setLastUpdatedAt(Date.now())
       setError(null)
       setClosed(false)
     }
-
-    const fetchOnce = () =>
-      api<{ nodes: Node[] }>("/nodes")
-        .then((d) => { setConnection("polling"); receive(d.nodes) })
-        .catch((e: Error) => {
-          if (closed) return
-          setError(e.message || "无法获取最新状态")
-          if (e instanceof ApiError && e.status === 401) setClosed(true)
+    const poll = () => {
+      if (!running || streaming || request) return
+      lastPoll = Date.now()
+      const current = new AbortController()
+      request = current
+      api<{ nodes: Node[] }>("/nodes", { signal: current.signal })
+        .then((d) => {
+          if (request !== current || !Array.isArray(d.nodes)) return
+          setConnection("polling")
+          receive(d.nodes)
         })
-
-    fetchOnce()
-
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/ws`
-    // A hub restart closes every stream. Without reconnecting, a page that
-    // outlives a deploy would remain on the fallback poll for the rest of its
-    // life, refreshing at a fifth of the live rate with no indication.
-    const connect = () => {
-      try {
-        socket = new WebSocket(url)
-      } catch {
-        poll ??= setInterval(fetchOnce, 5000)
-        return
-      }
-      socket.onmessage = (event) => {
-        try { receive(JSON.parse(event.data).nodes); setConnection("live") } catch { return }
-        // The stream has returned; the poll was only covering for it.
-        if (poll) {
-          clearInterval(poll)
-          poll = null
-        }
-      }
-      socket.onerror = () => socket?.close()
-      socket.onclose = () => {
-        if (closed) return
-        setConnection("reconnecting")
-        fetchOnce()
-        poll ??= setInterval(fetchOnce, 5000)
-        retry = setTimeout(connect, 5000)
-      }
+        .catch((e: Error) => {
+          if (request !== current) return
+          setError(e.message || "无法获取最新状态")
+          if (e instanceof ApiError && e.status === 401) {
+            setClosed(true)
+            setNodes(null)
+          }
+        })
+        .finally(() => { if (request === current) request = null })
     }
-    connect()
-    const watchdog = setInterval(() => { if (!closed && Date.now()-lastReceived >= 10_000) fetchOnce() }, 5000)
-
-    return () => {
-      closed = true
-      clearInterval(watchdog)
-      socket?.close()
-      if (poll) clearInterval(poll)
-      if (retry) clearTimeout(retry)
+    const abortPoll = () => {
+      request?.abort()
+      request = null
     }
+    const disconnect = () => {
+      const old = socket
+      socket = null
+      streaming = false
+      old?.close()
+    }
+    const recover = () => {
+      disconnect()
+      setConnection("reconnecting")
+      poll()
+      clearTimeout(retry)
+      retry = setTimeout(connect, 5000)
+    }
+    function connect() {
+      if (!running || socket) return
+      const scheme = location.protocol === "https:" ? "wss" : "ws"
+      const query = "format=delta-v1" + (typeof DecompressionStream === "function" ? "&gzip=1" : "")
+      try { socket = new WebSocket(`${scheme}://${location.host}/api/ws?${query}`) } catch { recover(); return }
+      const current = socket
+      current.binaryType = "arraybuffer"
+      lastFrame = Date.now()
+      lastPoll = lastFrame
+      let base: Snapshot | null = null
+      let pending = Promise.resolve()
+      current.onmessage = (event) => {
+        // Binary frames decompress asynchronously. Keep wire order and discard
+        // queued work from a socket that was hidden, timed out or superseded.
+        pending = pending.then(async () => {
+          if (socket !== current) return
+          const frame = await decodeFrame(event.data)
+          if (socket !== current) return
+          base = nextSnapshot(base, frame)
+          lastFrame = Date.now()
+          streaming = true
+          abortPoll()
+          setConnection("live")
+          receive(base.nodes)
+        }).catch(() => { if (socket === current) recover() })
+      }
+      current.onclose = current.onerror = () => { if (socket === current) recover() }
+    }
+    const stop = () => {
+      running = false
+      clearTimeout(retry)
+      clearInterval(timer)
+      abortPoll()
+      disconnect()
+    }
+    const start = () => {
+      if (running || document.hidden) return
+      running = true
+      setConnection("connecting")
+      connect()
+      timer = setInterval(() => {
+        if (socket && Date.now() - lastFrame >= 10_000) recover()
+        else if (!streaming && Date.now() - lastPoll >= 5000) poll()
+      }, 1000)
+    }
+    const visibility = () => { if (document.hidden) stop(); else start() }
+    document.addEventListener("visibilitychange", visibility)
+    start()
+    return () => { document.removeEventListener("visibilitychange", visibility); stop() }
   }, [])
 
   return { nodes, error, closed, lastUpdatedAt, stale, connection }
