@@ -193,7 +193,7 @@ export function useNodes() {
       lastPoll = Date.now()
       const current = new AbortController()
       request = current
-      api<{ nodes: Node[] }>("/nodes", { signal: current.signal })
+      api<{ nodes: Node[] }>("/nodes?view=public", { signal: current.signal })
         .then((d) => {
           if (request !== current || !Array.isArray(d.nodes)) return
           setConnection("polling")
@@ -229,7 +229,7 @@ export function useNodes() {
     function connect() {
       if (!running || socket) return
       const scheme = location.protocol === "https:" ? "wss" : "ws"
-      const query = "format=delta-v1" + (typeof DecompressionStream === "function" ? "&gzip=1" : "")
+      const query = "view=public&format=delta-v1" + (typeof DecompressionStream === "function" ? "&gzip=1" : "")
       try { socket = new WebSocket(`${scheme}://${location.host}/api/ws?${query}`) } catch { recover(); return }
       const current = socket
       current.binaryType = "arraybuffer"

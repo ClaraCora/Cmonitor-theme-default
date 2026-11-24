@@ -12,9 +12,14 @@ module.exports = async function verifyLive(context, origin, nodes) {
       Object.defineProperty(document, 'hidden', { get: () => window.fixtureHidden })
     })
     await page.clock.install()
-    await page.route('**/api/nodes', async route => { polls++; pollPending = route })
+    await page.route(url => url.pathname === '/api/nodes', async route => {
+      assert.equal(new URL(route.request().url()).searchParams.get('view'), 'public')
+      polls++
+      pollPending = route
+    })
     await page.routeWebSocket(/\/api\/ws(?:\?|$)/, ws => {
       const url = new URL(ws.url())
+      assert.equal(url.searchParams.get('view'), 'public')
       assert.equal(url.searchParams.get('format'), 'delta-v1')
       assert.equal(url.searchParams.get('gzip'), '1')
       sockets.push(ws)
@@ -49,5 +54,20 @@ module.exports = async function verifyLive(context, origin, nodes) {
     sockets[2].send(JSON.stringify({nodes:[{...nodes[0],name:'旧版节点'}],admin:false}))
     await name('旧版节点').waitFor()
     assert.equal(polls,1)
+
+    // Signed-in theme readers receive their provider links and remarks in text.
+    // Later compressed metric updates must preserve both on the card and in details.
+    const member = {...nodes[0], name:'登录节点', website:'https://provider.example.test/', remark:'登录备注'}
+    const signed = sockets[2]
+    signed.send(JSON.stringify({seq:20,nodes:[member],admin:false}))
+    await name('登录节点').waitFor()
+    signed.send(gzipSync(JSON.stringify({base:20,seq:21,at:125,patch:[{id:member.id,set:{name:'更新后的登录节点'}}]})))
+    await name('更新后的登录节点').waitFor()
+    assert.equal(await page.getByRole('link',{name:'官网',exact:true}).getAttribute('href'),member.website)
+    await name('更新后的登录节点').click()
+    await page.getByText('登录备注',{exact:true}).waitFor()
+    signed.send(JSON.stringify({base:21,seq:22,at:126,patch:[{id:member.id,set:{website:'',remark:''}}]}))
+    await page.getByText('登录备注',{exact:true}).waitFor({state:'hidden'})
+    assert.equal(await page.getByRole('link',{name:'官网',exact:true}).count(),0)
   } finally { await page.close() }
 }
