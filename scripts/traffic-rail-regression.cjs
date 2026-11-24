@@ -14,6 +14,8 @@ const fleet = [
   ['内网节点', '', 100, 200],
 ]
 const firstFive = ['香港 · 海湾', '法兰克福 · 莱茵', '伦敦 · 西区', '新加坡 · 南岸', '纽约 · 东岸']
+const monthlyTopFive = [['悉尼 · 北港', '48.00'], ['伦敦 · 西区', '44.00'], ['新加坡 · 南岸', '40.00'],
+  ['法兰克福 · 莱茵', '36.00'], ['香港 · 海湾', '32.00']]
 
 function intersects(a, b) {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y
@@ -48,7 +50,7 @@ async function expectClearGutter(page, rail) {
   const {width, height} = page.viewportSize()
   assert(box && box.x >= 0 && box.y >= 0 && box.x + box.width <= width && box.y + box.height <= height, 'entire floating ranking fits viewport')
   const obstacles = [
-    page.getByRole('complementary', {name:'来访者信息'}),
+    page.locator('[aria-label="来访者信息"]:visible'),
     page.getByRole('region', {name:'节点统计'}),
     page.getByRole('group', {name:'节点筛选'}),
     ...await page.locator('.node-card').all(),
@@ -68,6 +70,86 @@ async function expectNames(container, expected) {
   assert.deepEqual(names, expected)
 }
 
+async function expectReadableCosts(cost) {
+  const rows = cost.getByRole('listitem')
+  assert.equal(await rows.count(), monthlyTopFive.length)
+  for (const [index, [name, amount]] of monthlyTopFive.entries()) {
+    const row = rows.nth(index)
+    const label = row.getByText(name, {exact:true})
+    const value = row.locator('.traffic-dock-value')
+    await label.scrollIntoViewIfNeeded()
+    assert((await value.innerText()).includes(amount), `${name} has its own monthly amount`)
+    const labelBox = await label.boundingBox()
+    const amountBox = await value.boundingBox()
+    assert(labelBox && amountBox && labelBox.width >= 36 && !intersects(labelBox, amountBox),
+      `VPS name and amount have visible, separate space for ${name}`)
+    assert(await label.evaluate(el => {
+      const r = el.getBoundingClientRect()
+      return el.contains(document.elementFromPoint(r.left + 4, r.top + r.height / 2))
+    }), `the name of ${name} is reachable in the visible list`)
+  }
+}
+
+async function checkFullCosts(page, cost, output, mobile = false) {
+  const trigger = cost.getByRole('button', {name:'查看完整排行榜', exact:true})
+  if (mobile) await trigger.tap()
+  else {
+    await trigger.focus()
+    await page.keyboard.press('Enter')
+  }
+  const dialog = page.getByRole('dialog', {name:'本月消费排行', exact:true})
+  const rows = dialog.getByRole('list').getByRole('listitem')
+  const all = [...monthlyTopFive, ['东京 · 青叶', '28.00'], ['东京 · 备用', '28.00'], ['未定位节点', '28.00']]
+  await rows.last().waitFor()
+  assert.equal(await rows.count(), all.length, 'all and only public nodes with a recurring cost are included')
+  for (const [index, [name, amount]] of all.entries()) {
+    const row = rows.nth(index)
+    await row.getByText(name, {exact:true}).scrollIntoViewIfNeeded()
+    assert((await row.innerText()).includes(amount), `${name} appears with its own monthly cost in position ${index + 1}`)
+  }
+  const box = await dialog.boundingBox()
+  const {width, height} = page.viewportSize()
+  assert(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height + 1)
+  await dialog.screenshot({animations:'disabled',path:path.join(output,`monthly-costs-${mobile ? 'mobile' : 'desktop'}.png`)})
+  if (mobile) await dialog.getByRole('button', {name:/关闭/}).tap()
+  else await page.keyboard.press('Escape')
+  await dialog.waitFor({state:'hidden'})
+  await page.waitForFunction(el => el === document.activeElement, await trigger.elementHandle(), {timeout:3000})
+}
+
+async function checkMapNavigation(page, map) {
+  const plot = map.locator('svg.node-world')
+  const readView = () => plot.evaluate(el => {
+    const {x, y, width, height} = el.viewBox.baseVal
+    return [x, y, width, height]
+  })
+  const more = map.getByRole('button', {name:'放大地图', exact:true})
+  const less = map.getByRole('button', {name:'缩小地图', exact:true})
+  const reset = map.getByRole('button', {name:'重置地图视图', exact:true})
+  const original = await readView()
+  assert(await less.isDisabled(), 'zoom starts at the full map')
+  await more.focus()
+  await page.keyboard.press('Enter')
+  const zoomed = await readView()
+  assert(zoomed[2] < original[2] && zoomed[3] < original[3], 'zoom magnifies the map in both axes')
+  await less.click()
+  assert.deepEqual(await readView(), original, 'zoom out restores the full map')
+  await more.click()
+  const box = await plot.boundingBox()
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 26, y + 12, {steps:5})
+  await page.mouse.up()
+  const panned = await readView()
+  assert.notDeepEqual(panned.slice(0, 2), zoomed.slice(0, 2), 'drag changes the visible longitude or latitude')
+  assert.deepEqual(panned.slice(2), zoomed.slice(2), 'drag keeps the zoom level')
+  assert.equal(new URL(page.url()).searchParams.get('region'), null, 'dragging never selects a region')
+  await reset.click()
+  assert.deepEqual(await readView(), original, 'reset restores both the scale and position')
+}
+
 async function checkNodeMap(page, output) {
   const map = page.getByRole('region', {name:'节点地图', exact:true})
   const toggle = map.getByRole('button', {name:'节点地图', exact:true})
@@ -78,7 +160,7 @@ async function checkNodeMap(page, output) {
   const query = () => new URL(page.url()).searchParams
   await marker('JP').waitFor()
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
-  assert.equal(await map.getByRole('button').count(), 1, 'only the map heading is a button in the map panel')
+  await checkMapNavigation(page, map)
   const expectedRegions = fleet.slice(0, 7).map(([,code]) => code).sort()
   const markers = map.locator('g[data-map-marker]')
   assert.deepEqual(await markers.evaluateAll(items => items.map(item => item.dataset.mapMarker).sort()), expectedRegions)
@@ -128,34 +210,47 @@ async function checkNodeMap(page, output) {
   assert.equal(await country('SG', 1).getAttribute('aria-pressed'), 'true', 'clicking the map selects the center filter')
   assert.equal(await marker('SG').getAttribute('data-active'), 'true')
   assert.equal(await marker('US').getAttribute('data-active'), 'false')
+  await page.getByRole('region', {name:'近 7 天流量', exact:true}).getByText('新加坡', {exact:true}).waitFor()
   await filters.getByRole('button', {name:'清除筛选',exact:true}).click()
 
-  await page.setViewportSize({width:1800,height:640})
+  await page.setViewportSize({width:1800,height:760})
   await marker('JP').waitFor()
   await expectClearGutter(page, map)
   const week = page.getByRole('region', {name:'近 7 天流量',exact:true})
   const rank = page.locator('[aria-label="今日流量排行浮窗"]')
-  const visitor = page.getByRole('complementary', {name:'来访者信息',exact:true})
+  const visitor = page.locator('.visitor-pill:visible')
+  const cost = page.getByRole('region', {name:'本月消费排行榜', exact:true})
   const expiry = page.getByRole('region', {name:'临期提醒',exact:true})
   const headerRank = page.locator('header').getByRole('button',{name:/排行/})
-  for (const [width,height] of [[1799,900], [1600,640], [1440,900], [1024,768], [1920,639]]) {
+  for (const [width,height] of [[1799,900], [1600,640], [1440,900], [1024,768], [1800,640], [1920,759]]) {
     await page.setViewportSize({width,height})
     await marker('JP').waitFor()
-    await expectInlineRow(page, [map, week, rank, visitor])
+    await expectInlineRow(page, [map, week, rank, cost])
+    const pillBox = await visitor.boundingBox()
+    const costBox = await cost.boundingBox()
+    const firstNode = await cards.first().boundingBox()
+    assert(pillBox && pillBox.y >= costBox.y + costBox.height - 1 && pillBox.y + pillBox.height <= firstNode.y + 1,
+      'the desktop visitor pill fits between the tools and the node list')
     const exp = await expiry.boundingBox()
-    for (const panel of [map, week, rank, visitor]) {
+    for (const panel of [map, week, rank, cost]) {
       const r = await panel.boundingBox()
       assert(exp.y >= r.y + r.height - 1, 'expiry reminders appear on their own line')
     }
     assert.equal(await headerRank.count(), 0, 'the homepage has a single ranking entry')
     if (width === 1440) await page.screenshot({animations:'disabled',path:path.join(output,'fleet-tools-desktop.png')})
+    if (width === 1800) {
+      const latestDay = week.locator('[data-traffic-day]').last()
+      await latestDay.scrollIntoViewIfNeeded()
+      await latestDay.click({trial:true})
+      await page.screenshot({animations:'disabled',path:path.join(output,'fleet-tools-short-desktop.png')})
+    }
   }
   await toggle.click()
   await marker('JP').waitFor({state:'hidden'})
   assert.equal(await week.locator('[data-traffic-day]').count(), 7, 'collapsing the desktop map leaves the weekly chart accessible')
   await toggle.click()
 
-  const titles = ['节点地图','近 7 天流量','今日流量排行','访客']
+  const titles = ['节点地图','近 7 天流量','今日流量排行','本月消费排行']
   const tools = titles.map(name => page.getByRole('button',{name,exact:true}))
   for (const [width,height] of [[1023,768], [390,844], [320,720]]) {
     await page.setViewportSize({width,height})
@@ -166,7 +261,7 @@ async function checkNodeMap(page, output) {
       assert.equal(await tool.getAttribute('aria-expanded'), 'false')
       boxes.push(await tool.boundingBox())
     }
-    assert.equal(await visitor.count(), 0, 'the visitor does not float above nodes')
+    assert.equal(await visitor.count(), 1, 'the visitor is available as a compact pill')
     assert.equal(await headerRank.count(), 0)
     for (let i = 1; i < boxes.length; i++) {
       assert(Math.abs(boxes[0].y - boxes[i].y) <= 1 && boxes[i-1].x + boxes[i-1].width <= boxes[i].x + 1, 'four mobile launchers fit one row')
@@ -177,6 +272,7 @@ async function checkNodeMap(page, output) {
   await page.keyboard.press('Enter')
   await marker('JP').waitFor()
   assert.equal(await markers.count(), expectedRegions.length, 'expanding the phone map displays every known region')
+  await map.screenshot({animations:'disabled',path:path.join(output,'node-map-mobile.png')})
   await country('JP', 2).focus()
   await page.keyboard.press('Space')
   assert.equal(await cards.count(), 2, 'mobile keyboard users can select a country from the center filters')
@@ -197,13 +293,13 @@ async function checkNodeMap(page, output) {
   await page.keyboard.press('Escape')
   await todayRank.waitFor({state:'hidden'})
   await tools[3].click()
-  await visitor.getByText('198.51.100.99',{exact:true}).waitFor()
-  assert.notEqual(await visitor.evaluate(el=>getComputedStyle(el).position),'fixed')
+  await cost.getByText('悉尼 · 北港',{exact:true}).waitFor()
+  await checkFullCosts(page, cost, output, true)
   for (let i=0; i<tools.length; i++) assert.equal(await tools[i].getAttribute('aria-expanded'), String(i===3))
   await visitor.scrollIntoViewIfNeeded()
   await page.screenshot({animations:'disabled',path:path.join(output,'fleet-tools-mobile.png')})
   await tools[3].click()
-  await visitor.waitFor({state:'hidden'})
+  await cost.waitFor({state:'hidden'})
   await country('JP', 2).click()
   await page.setViewportSize({width:1920,height:1080})
   await page.evaluate(() => window.scrollTo(0,0))
@@ -214,17 +310,15 @@ async function checkOptionalVisitor(context, origin) {
   try {
     await page.setViewportSize({width:1280,height:800})
     await page.goto(origin)
-    const visitor = page.getByRole('complementary',{name:'来访者信息',exact:true})
+    const visitor = page.locator('.visitor-pill:visible')
     const map = page.getByRole('region',{name:'节点地图',exact:true})
     const week = page.getByRole('region',{name:'近 7 天流量',exact:true})
     const ranking = page.locator('[aria-label="今日流量排行浮窗"]')
     await visitor.getByRole('button',{name:'关闭访客信息',exact:true}).click()
     await visitor.waitFor({state:'hidden'})
-    await expectInlineRow(page, [map, week, ranking])
-    const widths = await Promise.all([map,week,ranking].map(async panel => (await panel.boundingBox()).width))
-    assert(Math.max(...widths) - Math.min(...widths) <= 2, 'dismissing the visitor redistributes the row in three equal columns')
+    await expectInlineRow(page, [map, week, ranking, page.getByRole('region',{name:'本月消费排行榜', exact:true})])
     await page.setViewportSize({width:320,height:720})
-    assert.equal(await page.getByRole('button',{name:'访客',exact:true}).count(), 0)
+    assert.equal(await page.locator('.visitor-pill:visible').count(), 0)
     // A fresh tab has no dismissal preference. The Hub can also turn off this panel.
     const disabled = await context.newPage()
     try {
@@ -237,9 +331,10 @@ async function checkOptionalVisitor(context, origin) {
         disabled.getByRole('region',{name:'节点地图',exact:true}),
         disabled.getByRole('region',{name:'近 7 天流量',exact:true}),
         disabled.locator('[aria-label="今日流量排行浮窗"]'),
+        disabled.getByRole('region',{name:'本月消费排行榜', exact:true}),
       ]
       await expectInlineRow(disabled, panels)
-      assert.equal(await disabled.getByRole('complementary',{name:'来访者信息',exact:true}).count(), 0)
+      assert.equal(await disabled.locator('[aria-label="来访者信息"]:visible').count(), 0)
       const bounds = await Promise.all(panels.map(panel => panel.boundingBox()))
       assert(Math.max(...bounds.map(r => r.width)) - Math.min(...bounds.map(r => r.width)) <= 2)
     } finally {
@@ -266,6 +361,9 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
       disk_total: 40 * GiB, disk_used: (6 + index * 2) * GiB, net_rx: (index + 1) * 125000, net_tx: (8 - index) * 70000},
     pings: [{id:1,name:'Cloudflare',latency:12 + index,updated_at:now,samples:[11,14,12,11,15,13,12,13]}],
   }))
+  // With the fixture's 8 CNY/USD rate, these plans rank at 48 and 40 CNY per month.
+  Object.assign(fixtures[5], {currency:'USD', price:6})
+  Object.assign(fixtures[3], {billing_cycle:'yearly', price:480})
   fixtures[7].country = 'FR' // A private node must not introduce a visible region.
   const tokyoBackup = {...fixtures[0], id:20, name:'东京 · 备用', online:false, day_rx:0, day_tx:0, expires_at:null}
   const unknown = {...tokyoBackup, id:21, name:'未定位节点', country:'', online:true}
@@ -278,16 +376,26 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await page.setViewportSize({width:1920,height:1080})
     await page.goto(origin + '/')
     const rail = page.locator('[aria-label="今日流量排行浮窗"]')
+    const cost = page.getByRole('region', {name:'本月消费排行榜', exact:true})
     const expiry = page.getByRole('region', {name:'临期提醒', exact:true})
     const expectedDue = ['香港 · 海湾', '伦敦 · 西区', '东京 · 青叶']
     const openAll = rail.getByRole('button', {name:'查看完整排行',exact:true})
     const dialog = page.getByRole('dialog', {name:'今日流量排行',exact:true})
-    await page.getByRole('complementary', {name:'来访者信息'}).waitFor()
+    await page.locator('.visitor-desktop:visible').waitFor()
     await expectNames(rail.getByRole('list').first(), firstFive)
+    await cost.getByText('悉尼 · 北港', {exact:true}).waitFor()
+    await expectReadableCosts(cost)
+    await checkFullCosts(page, cost, output)
+    const costBox = await cost.boundingBox()
+    const weekBox = await page.getByRole('region', {name:'近 7 天流量', exact:true}).boundingBox()
+    assert(Math.abs(costBox.x - weekBox.x) <= 2 && costBox.y >= weekBox.y + weekBox.height,
+      'cost ranking follows the weekly chart in the right gutter')
+    assert(page.viewportSize().height - costBox.y - costBox.height <= 32, 'cost ranking sits at the bottom of the right gutter')
     await expectNames(expiry, expectedDue)
     await expiry.getByRole('button', {name:/香港 · 海湾/}).getByText('今天到期', {exact:true}).waitFor()
     await expiry.getByRole('button', {name:/东京 · 青叶/}).getByText('剩 10 天', {exact:true}).waitFor()
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
     await checkNodeMap(page, output)
     await checkOptionalVisitor(context, origin)
@@ -313,9 +421,13 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     fixtures[5].day_tx = 72 * GiB
     await expectNames(rail.getByRole('list').first(), ['悉尼 · 北港', ...firstFive.slice(0,4)])
 
-    await page.setViewportSize({width:1800,height:640})
+    await page.setViewportSize({width:1800,height:760})
     await rail.waitFor()
+    await expectReadableCosts(cost)
+    const shortCost = await cost.boundingBox()
+    assert(page.viewportSize().height - shortCost.y - shortCost.height <= 32)
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
 
     const rankBox = await rail.boundingBox()
@@ -336,6 +448,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
       return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))
     }, await lastDue.elementHandle())
     await expectClearGutter(page, rail)
+    await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
 
     await lastDue.click()
@@ -356,8 +469,12 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await expiry.waitFor({state:'detached'})
     assert(await openAll.isVisible(), 'with no upcoming renewals the traffic ranking is still available')
     assert.equal(await page.getByRole('heading', {name:'临期提醒', exact:true, includeHidden:true}).count(), 0)
-    await page.getByRole('heading',{name:'东京 · 青叶',exact:true}).click()
+    await cost.getByRole('button', {name:'查看完整排行榜',exact:true}).click()
+    const fullCosts = page.getByRole('dialog', {name:'本月消费排行',exact:true})
+    const sixth = fullCosts.getByRole('listitem').nth(5)
+    await sixth.getByRole('button', {name:new RegExp(extra[0].name + '\\s')}).click()
     await page.getByRole('button',{name:'刷新图表',exact:true}).waitFor()
+    assert.equal(new URL(page.url()).pathname, '/node/' + extra[0].id, 'the sixth cost opens the correct VPS')
     await rail.waitFor({state:'hidden'})
     assert.deepEqual(errors, [])
   } finally {

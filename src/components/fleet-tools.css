@@ -11,8 +11,8 @@
   min-width: 0;
 }
 .dark .fleet-tools { --tool-amber: #f5c886; }
-.fleet-rail, .fleet-rail-panels, .geo-week-panels { display: contents; }
-.fleet-tools :is(.node-map, .fleet-ranking-slot, .visitor-desktop) { min-width: 0; }
+.fleet-rail, .fleet-rail-panels, .geo-week-panels, .geo-week-overview { display: contents; }
+.fleet-tools :is(.node-map, .fleet-ranking-slot, .cost-dock, .visitor-desktop) { min-width: 0; }
 .fleet-tool-switcher {
   display: grid;
   grid-auto-flow: column;
@@ -57,15 +57,17 @@
 .visitor-close svg { width: 1rem; height: 1rem; }
 .visitor-list { display: grid; gap: .5rem; margin-top: .65rem; border-top: 1px solid var(--map-edge); padding-top: .65rem; }
 .visitor-list svg { flex: none; width: .9rem; height: .9rem; }
+.visitor-pill { display: none; }
 
 /* In the content column every open card gets one track. The reminder gets
    its own line only when the Hub has supplied an upcoming expiration. */
 @media (min-width: 1024px) {
-  .fleet-tools { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
-  .fleet-tools:has(.visitor-desktop) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .fleet-tools .expiry-dock { grid-column: 1 / -1; }
+  .fleet-tools { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: start; }
+  .fleet-ranking-slot { order: 3; }
+  .fleet-tools .cost-dock { order: 4; }
+  .fleet-tools .expiry-dock { grid-column: 1 / -1; order: 5; }
 }
-@media (min-width: 1024px) and (width < 1800px), (min-width: 1024px) and (height < 640px) {
+@media (min-width: 1024px) and (width < 1800px), (min-width: 1024px) and (height < 760px) {
   .fleet-tools { align-items: stretch; }
   .node-map:has([aria-expanded="false"]), .fleet-ranking-slot:has([aria-expanded="false"]) { align-self: start; }
   .node-map:has([aria-expanded="true"]), #node-map-body:not([hidden]), .node-map-atlas,
@@ -77,14 +79,50 @@
   .fleet-ranking-slot .traffic-dock-more { margin-top: auto; }
   .weekly-traffic:has(.weekly-plot) { display: flex; flex-direction: column; }
   .weekly-plot { flex: 1; width: 100%; min-height: 8.3rem; }
-  .visitor-desktop { display: flex; flex-direction: column; }
-  .visitor-list { flex: 1; align-content: space-evenly; }
   .fleet-ranking-slot .traffic-dock-list li { padding-block: .22rem; gap: .18rem .4rem; }
   .fleet-ranking-slot .traffic-dock-list { margin-block: .4rem; }
   .fleet-tools .expiry-dock-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
 }
+@media (width < 1800px), (height < 760px) {
+  .visitor-desktop { display: none; }
+  .visitor-pill {
+    grid-column: 1 / -1;
+    order: 6;
+    justify-self: end;
+    display: flex;
+    max-width: min(20rem, calc(100vw - 2rem));
+    align-items: center;
+    gap: .45rem;
+    min-height: 2rem;
+    padding: .38rem .65rem .38rem .75rem;
+    border: 1px solid var(--map-edge);
+    border-radius: 999px;
+    background: var(--tool-bg);
+    color: var(--map-text);
+    backdrop-filter: blur(12px);
+    font-size: .75rem;
+    pointer-events: auto;
+  }
+  .visitor-pill > svg { width: .9rem; height: .9rem; flex: none; color: var(--map-highlight); }
+  .visitor-pill-place { min-width: 0; color: var(--map-secondary); }
+  .visitor-pill-divider { color: var(--map-secondary); }
+  .visitor-pill-close {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-left: .1rem;
+    border-radius: 999px;
+    color: var(--map-secondary);
+    cursor: pointer;
+  }
+  .visitor-pill-close:hover { background: var(--map-heading-hover); color: var(--map-text); }
+  .visitor-pill-close:focus-visible { outline: 2px solid var(--map-highlight); outline-offset: 1px; }
+  .visitor-pill-close svg { width: .8rem; height: .8rem; }
+}
 /* Both gutters must fit before either rail takes space from the node grid. */
-@media (min-width: 1800px) and (min-height: 640px) {
+@media (min-width: 1800px) and (min-height: 760px) {
   .fleet-overview {
     --fleet-rail-width: 16rem;
     --fleet-rail-left: max(1rem, calc((100% - 1400px) / 2 - var(--fleet-rail-width)));
@@ -113,12 +151,43 @@
     flex-direction: column;
     gap: .625rem;
   }
-  .geo-week-panels { right: var(--fleet-rail-left); overflow-y: auto; }
-  .geo-week-panels > * { flex: none; }
+  .geo-week-panels { bottom: 1rem; right: var(--fleet-rail-left); }
+  .geo-week-overview {
+    display: flex;
+    flex-direction: column;
+    gap: .625rem;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--map-secondary) transparent;
+  }
+  .geo-week-overview > * { flex: none; }
+  .geo-week-panels .cost-dock {
+    flex: none;
+    max-height: 50%;
+    margin-top: auto;
+  }
+  .geo-week-panels .cost-dock-list {
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--map-secondary) transparent;
+  }
   .fleet-rail { bottom: 1rem; left: var(--fleet-rail-left); pointer-events: none; }
   .fleet-rail-panels { display: flex; min-height: 0; flex-direction: column; gap: .625rem; }
   .fleet-rail .visitor-desktop { flex: none; margin-top: auto; pointer-events: auto; }
+  .fleet-rail .visitor-pill { display: none; }
 }
 @media (width < 400px) {
   .fleet-tool-switcher button { flex-direction: column; gap: .18rem; font-size: .75rem; }
+}
+@media (width < 1024px) {
+  .visitor-pill {
+    position: fixed;
+    z-index: 9;
+    right: 50%;
+    bottom: max(.75rem, env(safe-area-inset-bottom));
+    transform: translateX(50%);
+    box-shadow: 0 .5rem 1.5rem rgb(15 23 42 / 18%);
+  }
 }

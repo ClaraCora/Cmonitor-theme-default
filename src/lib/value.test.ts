@@ -1,12 +1,19 @@
 import assert from "node:assert/strict"
 
-import { remainingValue, summarizeValue, valueInCny } from "./value.ts"
+import { monthlyCost, remainingValue, summarizeValue, valueInCny } from "./value.ts"
 
 // Fix the valuation clock and timezone: calendar-period tests must not depend
 // on the machine running CI or the wall clock on the day a release is built.
 process.env.TZ = "UTC"
 const at = (date: string) => new Date(`${date}T00:00:00`).getTime()
 const plan = { price: 31, currency: "USD", billing_cycle: "monthly", expires_at: "2026-11-16", permanent: false }
+
+assert.equal(monthlyCost(plan), 31)
+assert.equal(monthlyCost({ ...plan, price: 120, billing_cycle: "quarterly" }), 40)
+assert.equal(monthlyCost({ ...plan, price: 120, billing_cycle: "yearly" }), 10)
+assert.equal(monthlyCost({ ...plan, billing_cycle: "once" }), null)
+assert.equal(monthlyCost({ ...plan, permanent: true }), null)
+assert.equal(monthlyCost({ ...plan, price: 0 }), null)
 
 assert.equal(remainingValue(plan, at("2026-11-01")), 15)
 assert.equal(remainingValue(plan, at("2026-11-16")), 0)

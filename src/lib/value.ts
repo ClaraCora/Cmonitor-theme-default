@@ -13,6 +13,28 @@ const MONTHS: Record<string, number> = {
   triennial: 36,
 }
 
+/** Convert a recurring plan price to its monthly equivalent. */
+export function monthlyCost(node: Pick<Node, "price" | "billing_cycle" | "permanent">): number | null {
+  const months = MONTHS[node.billing_cycle]
+  if (!months || node.permanent || !Number.isFinite(node.price) || node.price <= 0) return null
+  const monthly = node.price / months
+  return Number.isFinite(monthly) && monthly > 0 ? monthly : null
+}
+
+export type MonthlyPlan = { id: number; name: string; monthly: number; currency: string }
+
+export function collectMonthlyPlans(nodes: Node[]): MonthlyPlan[] {
+  const plans: MonthlyPlan[] = []
+  for (const node of nodes) {
+    const monthly = monthlyCost(node)
+    const currency = node.currency?.trim().toUpperCase()
+    if (monthly !== null && currency && /^[A-Z]{3}$/.test(currency)) {
+      plans.push({ id: node.id, name: node.name?.trim() || `节点 #${node.id}`, monthly, currency })
+    }
+  }
+  return plans
+}
+
 /** Unused prepaid service, estimated at the current plan's price. */
 export function remainingValue(node: Plan, now = Date.now()): number | null {
   const months = MONTHS[node.billing_cycle]

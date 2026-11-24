@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api, useNodes, type Node } from "@/lib/api"
 import { hasTag, parsePresetTags } from "@/lib/tags"
+import { useExchangeRates } from "@/lib/useExchangeRates"
+import { collectMonthlyPlans } from "@/lib/value"
 
 // `admin_url` is sent only to a signed-in caller, which is what lets the entry
 // exist here without the path ever reaching the public bundle.
@@ -190,6 +192,8 @@ export default function App() {
   // stays hidden even for a signed-in operator, whose complete list lives in
   // the panel rather than here.
   const sorted = useMemo(() => (nodes ?? []).filter(n => n.public).sort((a, b) => a.sort - b.sort || a.id - b.id), [nodes])
+  const plans = useMemo(() => collectMonthlyPlans(sorted), [sorted])
+  const exchange = useExchangeRates(open === null && !!(me?.public_page || me?.authed) && plans.some(plan => plan.currency !== "CNY"))
   const regions = useMemo(() => {
     const counts = new Map<string, number>()
     for (const node of sorted) {
@@ -285,9 +289,9 @@ export default function App() {
           </div>
         ) : (
           <>
-            <Summary nodes={sorted} stale={stale} />
+            <Summary nodes={sorted} stale={stale} exchange={exchange} />
             <FleetFilters nodes={sorted} entries={regions} presetTags={presetTags} filters={{ ...filters, tag }} onPick={pick} />
-            <FleetTools nodes={sorted} entries={regions} selected={region} compact={compact} visitorEnabled={me.visitor_card !== false}
+            <FleetTools nodes={sorted} plans={plans} exchange={exchange} entries={regions} selected={region} compact={compact} visitorEnabled={me.visitor_card !== false}
               setRankingHost={setRankingHost} onOpenNode={go}
               onPick={code => pick({ region: code === region ? null : code, tag: null })} />
             {(region || tag || status !== "all") && (

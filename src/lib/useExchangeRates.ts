@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 
 import { cachedExchangeRates, EXCHANGE_CACHE_TTL, fetchExchangeRates } from "./exchange"
 
+export type ExchangeState = ReturnType<typeof useExchangeRates>
+
 export function useExchangeRates(enabled: boolean) {
   const [rates, setRates] = useState(cachedExchangeRates)
   const [loading, setLoading] = useState(false)

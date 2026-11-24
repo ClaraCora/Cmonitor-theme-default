@@ -63,7 +63,8 @@ export function VisitorCard({ visitor, onClose }: { visitor: Visitor; onClose: (
     { icon: Clock, text: new Date().toLocaleDateString("zh-CN", { year: "numeric", month: "long", day: "numeric" }) },
   ]
   return (
-    <aside id="fleet-tool-visitor" aria-label="来访者信息" className="visitor-desktop">
+    <>
+      <aside id="fleet-tool-visitor" aria-label="来访者信息" className="visitor-desktop">
       <div className="visitor-heading">
         <span className="visitor-icon" aria-hidden="true"><User /></span>
         <div className="min-w-0 flex-1">
@@ -82,6 +83,18 @@ export function VisitorCard({ visitor, onClose }: { visitor: Visitor; onClose: (
           </li>
         ))}
       </ul>
-    </aside>
+      </aside>
+      <aside aria-label="来访者信息" className="visitor-pill">
+        <Globe aria-hidden="true" />
+        <span className="tnum">{visitor.ip}</span>
+        {(visitor.city || country) && <>
+          <span className="visitor-pill-divider" aria-hidden="true">|</span>
+          <span className="visitor-pill-place truncate">{visitor.city || country}</span>
+        </>}
+        <button type="button" onClick={onClose} title="关闭" aria-label="关闭访客信息" className="visitor-pill-close">
+          <X aria-hidden="true" />
+        </button>
+      </aside>
+    </>
   )
 }

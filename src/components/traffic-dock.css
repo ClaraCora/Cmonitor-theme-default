@@ -71,6 +71,31 @@ h2.traffic-dock-heading { cursor: default; }
 }
 .traffic-dock-more svg { width: .875rem; height: .875rem; }
 
+.cost-dock { display: flex; flex-direction: column; }
+.cost-dock-unit {
+  margin-inline-start: auto;
+  color: var(--rank-secondary);
+  font-size: .6875rem;
+  font-weight: 500;
+}
+.cost-dock-list { margin-top: .45rem; }
+.cost-dock-list li { display: block; padding-block: .2rem; }
+.cost-dock-row {
+  display: grid;
+  grid-template-columns: .9rem minmax(0, 1fr) fit-content(48%);
+  align-items: baseline;
+  gap: .3rem .4rem;
+  width: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+.cost-dock-row:hover { color: var(--rank-accent); }
+.cost-dock-row .traffic-dock-value { white-space: normal; overflow-wrap: anywhere; text-align: end; }
+.cost-dock-row:focus-visible { outline: 2px solid var(--rank-accent); outline-offset: -3px; border-radius: .25rem; }
+.cost-dock-row .traffic-dock-track { grid-column: 2 / -1; }
+.cost-dock-note { margin: 0 .875rem .65rem; color: var(--rank-secondary); font-size: .6875rem; }
+.cost-dock .traffic-dock-more { margin-top: auto; }
+
 .expiry-dock {
   display: flex;
   flex-direction: column;
@@ -115,8 +140,9 @@ h2.traffic-dock-heading { cursor: default; }
 
 
 /* Give reminders room in short desktop windows while keeping all five ranks. */
-@media (min-width: 1800px) and (min-height: 640px) and (max-height: 760px) {
+@media (min-width: 1800px) and (min-height: 760px) and (max-height: 820px) {
   .fleet-rail-panels:has(.expiry-dock) .traffic-dock-track { display: none; }
   .fleet-rail-panels:has(.expiry-dock) .traffic-dock-list { margin-block: .25rem; }
   .fleet-rail-panels:has(.expiry-dock) .traffic-dock-list li { padding-block: .2rem; }
+  .geo-week-panels .cost-dock .traffic-dock-track { display: none; }
 }

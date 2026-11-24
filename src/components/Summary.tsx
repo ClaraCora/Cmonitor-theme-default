@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card"
 import { speedHistory, type Node } from "@/lib/api"
 import { bytes, rate } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useExchangeRates } from "@/lib/useExchangeRates"
+import type { ExchangeState } from "@/lib/useExchangeRates"
 import { summarizeValue, valueInCny } from "@/lib/value"
 
 function Tile({ icon: Icon, label, children, className }: {
@@ -91,7 +91,7 @@ function Spark({ series }: { series: { values: number[]; className: string }[] }
 
 const valueFormat = new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
-export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boolean }) {
+export function Summary({ nodes, stale = false, exchange }: { nodes: Node[]; stale?: boolean; exchange: ExchangeState }) {
   const online = nodes.filter((n) => n.online)
   const sum = (pick: (n: Node) => number) => nodes.reduce((total, n) => total + pick(n), 0)
 
@@ -106,7 +106,6 @@ export function Summary({ nodes, stale = false }: { nodes: Node[]; stale?: boole
   const now = speedHistory.at(-1) ?? { rx: 0, tx: 0 }
   const value = summarizeValue(nodes)
   const needsExchange = value.totals.some(([currency, amount]) => currency !== "CNY" && amount > 0)
-  const exchange = useExchangeRates(needsExchange)
   const cny = valueInCny(value.totals, exchange.rates?.rates)
   const valueNote = `单期价格 × 剩余时长 ÷ 计费周期，再统一折算为 CNY。${value.counted} 台计入，${value.omitted} 台未计入。永久、一次性及缺少计费信息的节点未计入。${needsExchange && exchange.rates ? `汇率日期：${exchange.rates.date}；来源：Currency API。` : ""}`
 

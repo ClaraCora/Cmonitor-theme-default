@@ -3,7 +3,7 @@
 // output of ClaraCora/Cmonitor's scripts/build-visitor-map.py at tag v1.9.5.
 import world from "./node-world.json" with { type: "json" }
 
-export const WORLD_VIEW_BOX = "0 0 960 480"
+export const WORLD_SIZE = { width: 960, height: 480 } as const
 export const WORLD_AREAS: readonly { code: string; path: string }[] =
   Object.entries(world.areas).map(([code, path]) => ({ code, path }))
 
