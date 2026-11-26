@@ -1,16 +1,22 @@
 .fleet-tools {
   --map-text: var(--foreground);
-  --map-secondary: var(--muted-foreground);
+  --map-secondary: color-mix(in oklch, var(--muted-foreground) 80%, var(--foreground));
   --map-edge: var(--border);
   --map-highlight: var(--primary);
   --map-heading-hover: var(--accent);
   --tool-bg: var(--card);
   --tool-amber: #865012;
+  --tool-selection-ink: var(--primary-foreground);
+  --tool-track: #7293ce;
   display: grid;
   gap: .625rem;
   min-width: 0;
 }
-.dark .fleet-tools { --tool-amber: #f5c886; }
+.dark .fleet-tools {
+  --tool-amber: #f5c886;
+  --tool-selection-ink: #0f172a;
+  --tool-track: #91a7df;
+}
 .fleet-rail, .fleet-rail-panels, .geo-week-panels, .geo-week-overview { display: contents; }
 .fleet-tools :is(.node-map, .fleet-ranking-slot, .cost-dock, .visitor-desktop) { min-width: 0; }
 .fleet-tool-switcher {
@@ -134,6 +140,10 @@
   }
   .fleet-tools {
     display: contents;
+  }
+  /* The gutters need a little more opacity in dark mode for readability.
+     Light mode inherits the same frosted palette as the inline dashboard. */
+  .dark .fleet-tools {
     --map-text: #f1f5f9;
     --map-secondary: #cbd5e1;
     --map-edge: rgb(255 255 255 / 12%);

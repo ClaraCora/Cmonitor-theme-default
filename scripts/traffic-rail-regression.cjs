@@ -433,7 +433,38 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await checkNodeMap(page, output)
     await checkOptionalVisitor(context, origin)
     await require('./weekly-traffic-regression.cjs').checkWeekly(context, origin, output)
+    // A desktop breakpoint must not force dark surfaces in the light theme.
+    const themeColors = () => page.evaluate(() => {
+      const color = (selector, property) => getComputedStyle(document.querySelector(selector))[property]
+      const surfaces = ['.traffic-dock:not(.cost-dock)', '.weekly-traffic', '.node-map', '.expiry-dock', '.cost-dock', '.visitor-desktop']
+      return {
+        background: color('.node-card', 'backgroundColor'),
+        panels: surfaces.map(selector => color(selector, 'backgroundColor')),
+        text: surfaces.map(selector => color(selector, 'color')),
+        map: color('.node-map-sheet', 'backgroundColor'),
+        land: color('.node-world-land', 'fill'),
+        weekly: color('.weekly-up', 'backgroundColor'),
+        selection: color('.cost-dock .cost-tags [aria-pressed="true"]', 'color'),
+      }
+    })
+    const light = await themeColors()
+    assert(light.panels.every(background => background === light.background), 'light gutter panels use the node card surface')
+    await page.setViewportSize({width:1440,height:900})
+    const inlineLight = await themeColors()
+    assert.deepEqual(inlineLight, light, 'light panel colors do not change at the gutter breakpoint')
+    await page.setViewportSize({width:1920,height:1080})
     await page.screenshot({animations:'disabled',path:path.join(output,'traffic-ranking-1920.png')})
+    await page.getByRole('button', {name:'切换主题',exact:true}).click()
+    await page.locator('html.dark').waitFor()
+    const dark = await themeColors()
+    assert(dark.panels.every((background, index) => background !== light.panels[index]), 'every gutter surface follows dark mode')
+    assert(dark.text.every((color, index) => color !== light.text[index]), 'every gutter foreground follows dark mode')
+    for (const key of ['map', 'land', 'weekly', 'selection']) assert.notEqual(dark[key], light[key], `${key} follows dark mode`)
+    await page.getByRole('button', {name:'切换主题',exact:true}).click()
+    await page.locator('html:not(.dark)').waitFor()
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.node-card')).backgroundColor ===
+      getComputedStyle(document.querySelector('.traffic-dock')).backgroundColor)
+    assert.deepEqual(await themeColors(), light, 'switching back restores the full light palette')
     await page.getByRole('button', {name:'切换主题',exact:true}).click()
     await page.locator('html.dark').waitFor()
     await expectClearGutter(page, rail)

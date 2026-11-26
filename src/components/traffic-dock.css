@@ -58,7 +58,7 @@ h2.traffic-dock-heading { cursor: default; }
   border-radius: 1rem;
   overflow: hidden;
 }
-.traffic-dock-track > span { display: block; height: 100%; background: #91a7df; }
+.traffic-dock-track > span { display: block; height: 100%; background: var(--tool-track); }
 .traffic-dock-list li:first-child :is(.traffic-dock-rank, .traffic-dock-value) { color: var(--rank-accent); }
 .traffic-dock-list li:first-child .traffic-dock-track > span { background: var(--rank-accent); }
 .traffic-dock-more {
@@ -184,12 +184,7 @@ h2.traffic-dock-heading { cursor: default; }
 }
 .geo-week-panels .cost-tags button[aria-pressed="true"] {
   background: var(--map-highlight);
-  color: var(--cost-selected-ink);
-}
-.cost-dock { --cost-selected-ink: white; }
-.dark .cost-dock { --cost-selected-ink: #0f172a; }
-@media (min-width: 1800px) and (min-height: 760px) {
-  .cost-dock { --cost-selected-ink: #0f172a; }
+  color: var(--tool-selection-ink);
 }
 .cost-tags button:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
 .cost-total { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }

@@ -35,18 +35,16 @@ button.node-map-heading:hover { background: var(--map-heading-hover); }
   --atlas-pin: #b5f5db;
   --atlas-pin-edge: #124b4c;
 }
-/* The fixed side rails always use dark panels. Inline maps follow the page theme. */
-@media (width < 1800px), (height < 760px) {
-  :root:not(.dark) .node-map {
-    --atlas-sea: #e5f2f3;
-    --atlas-grid: #b6d1d4;
-    --atlas-land: #c1d2d3;
-    --atlas-edge: #f2f8f8;
-    --atlas-occupied: #61aca7;
-    --atlas-hover: #40918b;
-    --atlas-pin: #005d59;
-    --atlas-pin-edge: #eaffff;
-  }
+/* Map colors depend on the theme, regardless of the panel's placement. */
+:root:not(.dark) .node-map {
+  --atlas-sea: #e5f2f3;
+  --atlas-grid: #b6d1d4;
+  --atlas-land: #c1d2d3;
+  --atlas-edge: #f2f8f8;
+  --atlas-occupied: #61aca7;
+  --atlas-hover: #40918b;
+  --atlas-pin: #005d59;
+  --atlas-pin-edge: #eaffff;
 }
 .node-map-atlas { min-width: 0; }
 .node-map-sheet {

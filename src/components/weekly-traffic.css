@@ -1,13 +1,18 @@
 .weekly-traffic {
-  --weekly-up: #83ceb9;
-  --weekly-down: #d2a16b;
+  --weekly-up: #369783;
+  --weekly-down: #b77b3c;
   padding: .75rem .7rem .65rem;
   min-width: 0;
   color: var(--map-text);
   background: var(--tool-bg);
   border: 1px solid var(--map-edge);
   border-radius: 1rem;
+  backdrop-filter: blur(12px);
   font-variant-numeric: tabular-nums;
+}
+.dark .weekly-traffic {
+  --weekly-up: #83ceb9;
+  --weekly-down: #d2a16b;
 }
 .weekly-heading, .weekly-legend, .weekly-legend span { display: flex; align-items: center; }
 .weekly-heading { gap: .4rem; min-height: 1.4rem; }
