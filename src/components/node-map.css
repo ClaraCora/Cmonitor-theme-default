@@ -26,23 +26,21 @@ h2.node-map-heading { cursor: default; }
 .node-map button:focus-visible { outline: 2px solid var(--map-highlight); outline-offset: -3px; }
 button.node-map-heading:hover { background: var(--map-heading-hover); }
 .node-map {
-  --atlas-sea: #192e3c;
-  --atlas-grid: #2c4553;
-  --atlas-land: #486571;
-  --atlas-edge: #243b48;
-  --atlas-occupied: #589b98;
-  --atlas-hover: #81c8ba;
+  --atlas-sea: #162b39;
+  --atlas-land: #94bbc1;
+  --atlas-globe-light: #244855;
+  --atlas-globe-shadow: #0d202e;
+  --atlas-edge: #426777;
   --atlas-pin: #b5f5db;
   --atlas-pin-edge: #124b4c;
 }
 /* Map colors depend on the theme, regardless of the panel's placement. */
 :root:not(.dark) .node-map {
   --atlas-sea: #e5f2f3;
-  --atlas-grid: #c4d9dc;
-  --atlas-land: #adc3c6;
-  --atlas-edge: #f2f8f8;
-  --atlas-occupied: #61aca7;
-  --atlas-hover: #40918b;
+  --atlas-land: #46777f;
+  --atlas-globe-light: #f7ffff;
+  --atlas-globe-shadow: #b6d7dd;
+  --atlas-edge: #8eb9c0;
   --atlas-pin: #005d59;
   --atlas-pin-edge: #eaffff;
 }
@@ -52,32 +50,61 @@ button.node-map-heading:hover { background: var(--map-heading-hover); }
   flex: 1;
   align-items: center;
   min-width: 0;
-  padding: .35rem .25rem;
+  padding-inline: .25rem;
   background: var(--atlas-sea);
 }
 .node-world {
+  position: relative;
   display: block;
+  /* Include the old sheet padding in the drawing area without growing the card. */
+  box-sizing: content-box;
+  padding-block: .35rem;
   width: 100%;
   aspect-ratio: 2;
   max-height: 13rem;
   overflow: hidden;
-  touch-action: manipulation;
+  cursor: grab;
+  touch-action: pan-y pinch-zoom;
   user-select: none;
 }
-.node-world[data-draggable="true"] { cursor: grab; touch-action: none; }
-.node-world[data-draggable="true"]:active { cursor: grabbing; }
+.node-world:active { cursor: grabbing; }
 .node-world:focus-visible { outline: 2px solid var(--atlas-pin); outline-offset: -2px; }
-.node-world-grid { fill: none; stroke: var(--atlas-grid); stroke-width: .7px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.node-world-land > path, .node-world-coverage { vector-effect: non-scaling-stroke; stroke: var(--atlas-edge); stroke-width: .45px; stroke-linejoin: round; }
-.node-world-land { fill: var(--atlas-land); }
-.node-world-coverage { fill: var(--atlas-occupied); cursor: pointer; }
-.node-world-coverage[data-active="true"] { fill: var(--atlas-hover); }
-.node-world-coverage[data-selected="true"] { fill: var(--atlas-hover); stroke: var(--atlas-pin); stroke-width: .8px; }
-.node-world-marker { cursor: pointer; outline: none; }
-.node-world-dot { fill: var(--atlas-pin); stroke: var(--atlas-pin-edge); stroke-width: 2.6; }
-.node-world-ring { fill: none; stroke: var(--atlas-pin); stroke-width: 2.1; opacity: 0; }
-.node-world-marker:is([data-active="true"], :focus-visible) .node-world-ring { opacity: 1; }
-.node-world-marker:focus-visible .node-world-ring { stroke-width: 4; }
+.node-globe-ball {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.node-globe-surface {
+  position: absolute;
+  inset: 3%;
+  border: 1px solid var(--atlas-edge);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 27%, var(--atlas-globe-light), var(--atlas-globe-shadow) 82%);
+}
+.node-world-land { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--atlas-land); }
+.node-world-marker {
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  cursor: pointer;
+}
+.node-world-marker:not([hidden]) { display: grid; place-items: center; }
+.node-world-dot {
+  width: .48rem;
+  height: .48rem;
+  border: 1px solid var(--atlas-pin-edge);
+  border-radius: 50%;
+  background: var(--atlas-pin);
+}
+.node-world-marker[data-active="true"] .node-world-dot { outline: 1px solid var(--atlas-pin); outline-offset: 2px; }
+.node-map .node-world-marker:focus-visible { outline-color: var(--atlas-pin); outline-offset: 0; }
 .node-map-placeholder { display: grid; place-items: center; aspect-ratio: 2; font-size: .75rem; }
 .node-map-footer {
   display: flex;
