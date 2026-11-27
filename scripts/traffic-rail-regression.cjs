@@ -149,16 +149,17 @@ async function checkMapNavigation(page, map) {
   })
   const more = map.getByRole('button', {name:'放大地图', exact:true})
   const less = map.getByRole('button', {name:'缩小地图', exact:true})
-  const reset = map.getByRole('button', {name:'重置地图视图', exact:true})
+  const reset = map.getByRole('button', {name:'恢复自动取景', exact:true})
   const original = await readView()
-  assert(await less.isDisabled(), 'zoom starts at the full map')
+  assert(await reset.isDisabled(), 'the map starts in automatic mode')
+  await less.click()
+  assert((await readView())[2] > original[2], 'the map can zoom out from the fitted view')
+  await reset.click()
+  assert.deepEqual(await readView(), original, 'reset returns to the fitted view')
   await more.focus()
   await page.keyboard.press('Enter')
   const zoomed = await readView()
   assert(zoomed[2] < original[2] && zoomed[3] < original[3], 'zoom magnifies the map in both axes')
-  await less.click()
-  assert.deepEqual(await readView(), original, 'zoom out restores the full map')
-  await more.click()
   const box = await plot.boundingBox()
   const x = box.x + box.width / 2
   const y = box.y + box.height / 2
@@ -170,6 +171,9 @@ async function checkMapNavigation(page, map) {
   assert.notDeepEqual(panned.slice(0, 2), zoomed.slice(0, 2), 'drag changes the visible longitude or latitude')
   assert.deepEqual(panned.slice(2), zoomed.slice(2), 'drag keeps the zoom level')
   assert.equal(new URL(page.url()).searchParams.get('region'), null, 'dragging never selects a region')
+  await plot.focus()
+  await page.keyboard.press('ArrowRight')
+  assert((await readView())[0] > panned[0], 'the keyboard can pan the enlarged map')
   await reset.click()
   assert.deepEqual(await readView(), original, 'reset restores both the scale and position')
 }
@@ -330,6 +334,62 @@ async function checkNodeMap(page, output) {
   await page.evaluate(() => window.scrollTo(0,0))
 }
 
+async function checkMapAutoFit(page, nodes, output) {
+  const map = page.getByRole('region', {name:'节点地图', exact:true})
+  const plot = map.locator('svg.node-world')
+  const marker = code => map.locator(`g[data-map-marker="${code}"]`)
+  const readWidth = () => plot.evaluate(el => el.viewBox.baseVal.width)
+  const initialWidth = await readWidth()
+  const previous = nodes.slice()
+  const asia = previous.filter(node => ['JP', 'HK', 'SG'].includes(node.country))
+  const edgeNodes = ['WS', 'FJ'].map((country, i) => ({
+    ...nodes[0], id:80 + i, sort:80 + i, name:`太平洋节点 ${country}`, country, day_rx:0, day_tx:0,
+    price:null, expires_at:null,
+  }))
+  nodes.splice(0, nodes.length, ...asia)
+  try {
+    await marker('AU').waitFor({state:'detached'})
+    const regionalWidth = await readWidth()
+    assert(regionalWidth < initialWidth * .7, 'the map zooms in when all VPS are in the same part of the world')
+    const regionalBounds = await map.boundingBox()
+    await map.screenshot({animations:'disabled',path:path.join(output,'node-map-asia.png')})
+
+    await map.getByRole('button', {name:'放大地图', exact:true}).click()
+    const manualWidth = await readWidth()
+    nodes.push(...edgeNodes)
+    await marker('FJ').waitFor({state:'attached'})
+    assert.equal(await readWidth(), manualWidth, 'fleet updates do not interrupt manual navigation')
+    await map.getByRole('button', {name:'恢复自动取景', exact:true}).click()
+
+    for (const node of edgeNodes) {
+      const pin = marker(node.country)
+      await pin.waitFor()
+      assert.equal(await pin.getAttribute('tabindex'), '0', 'new markers near the date line are keyboard reachable')
+      const bounds = await plot.boundingBox()
+      const target = await pin.boundingBox()
+      assert(target.x > bounds.x && target.x + target.width < bounds.x + bounds.width,
+        'the default viewport fits the entire target near either edge')
+    }
+    assert((await readWidth()) > regionalWidth,
+      'the overview expands when a new node needs more space')
+    const expandedBounds = await map.boundingBox()
+    assert.deepEqual([expandedBounds.width, expandedBounds.height], [regionalBounds.width, regionalBounds.height],
+      'changing geographic coverage does not resize the card')
+    await marker('FJ').focus()
+    await page.keyboard.press('Enter')
+    await page.getByRole('heading', {name:edgeNodes[1].name, exact:true}).waitFor()
+    assert.equal(new URL(page.url()).searchParams.get('region'), 'FJ')
+    await page.keyboard.press('Enter')
+    assert.equal(new URL(page.url()).searchParams.get('region'), null)
+    nodes.splice(-edgeNodes.length, edgeNodes.length)
+    await marker('FJ').waitFor({state:'detached'})
+    assert.equal(await readWidth(), regionalWidth, 'the regional view returns when edge nodes are removed')
+  } finally {
+    nodes.splice(0, nodes.length, ...previous)
+  }
+  await marker('AU').waitFor()
+}
+
 async function checkOptionalVisitor(context, origin) {
   const page = await context.newPage()
   try {
@@ -431,6 +491,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
     await expectClearGutter(page, cost)
     await expectClearGutter(page, expiry)
     await checkNodeMap(page, output)
+    await checkMapAutoFit(page, nodes, output)
     await checkOptionalVisitor(context, origin)
     await require('./weekly-traffic-regression.cjs').checkWeekly(context, origin, output)
     // A desktop breakpoint must not force dark surfaces in the light theme.

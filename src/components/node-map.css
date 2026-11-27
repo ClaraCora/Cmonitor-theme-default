@@ -27,8 +27,8 @@ h2.node-map-heading { cursor: default; }
 button.node-map-heading:hover { background: var(--map-heading-hover); }
 .node-map {
   --atlas-sea: #192e3c;
-  --atlas-grid: #34505e;
-  --atlas-land: #3d5663;
+  --atlas-grid: #2c4553;
+  --atlas-land: #486571;
   --atlas-edge: #243b48;
   --atlas-occupied: #589b98;
   --atlas-hover: #81c8ba;
@@ -38,8 +38,8 @@ button.node-map-heading:hover { background: var(--map-heading-hover); }
 /* Map colors depend on the theme, regardless of the panel's placement. */
 :root:not(.dark) .node-map {
   --atlas-sea: #e5f2f3;
-  --atlas-grid: #b6d1d4;
-  --atlas-land: #c1d2d3;
+  --atlas-grid: #c4d9dc;
+  --atlas-land: #adc3c6;
   --atlas-edge: #f2f8f8;
   --atlas-occupied: #61aca7;
   --atlas-hover: #40918b;
@@ -61,16 +61,18 @@ button.node-map-heading:hover { background: var(--map-heading-hover); }
   aspect-ratio: 2;
   max-height: 13rem;
   overflow: hidden;
+  touch-action: manipulation;
   user-select: none;
 }
-.node-world[data-zoomed="true"] { cursor: grab; touch-action: none; }
-.node-world[data-zoomed="true"]:active { cursor: grabbing; }
+.node-world[data-draggable="true"] { cursor: grab; touch-action: none; }
+.node-world[data-draggable="true"]:active { cursor: grabbing; }
 .node-world:focus-visible { outline: 2px solid var(--atlas-pin); outline-offset: -2px; }
 .node-world-grid { fill: none; stroke: var(--atlas-grid); stroke-width: .7px; vector-effect: non-scaling-stroke; pointer-events: none; }
-.node-world-land { fill: var(--atlas-land); stroke: var(--atlas-edge); stroke-width: 1.35; stroke-linejoin: round; }
-.node-world-coverage { fill: var(--atlas-occupied); stroke: var(--atlas-edge); stroke-width: 1.5; cursor: pointer; }
+.node-world-land > path, .node-world-coverage { vector-effect: non-scaling-stroke; stroke: var(--atlas-edge); stroke-width: .45px; stroke-linejoin: round; }
+.node-world-land { fill: var(--atlas-land); }
+.node-world-coverage { fill: var(--atlas-occupied); cursor: pointer; }
 .node-world-coverage[data-active="true"] { fill: var(--atlas-hover); }
-.node-world-coverage[data-selected="true"] { fill: var(--atlas-hover); stroke: var(--atlas-pin); stroke-width: 2; }
+.node-world-coverage[data-selected="true"] { fill: var(--atlas-hover); stroke: var(--atlas-pin); stroke-width: .8px; }
 .node-world-marker { cursor: pointer; outline: none; }
 .node-world-dot { fill: var(--atlas-pin); stroke: var(--atlas-pin-edge); stroke-width: 2.6; }
 .node-world-ring { fill: none; stroke: var(--atlas-pin); stroke-width: 2.1; opacity: 0; }
@@ -107,6 +109,7 @@ button.node-map-heading:hover { background: var(--map-heading-hover); }
   border-radius: .35rem;
   color: var(--map-text);
   cursor: pointer;
+  touch-action: manipulation;
 }
 .node-map-controls button svg { width: .95rem; height: .95rem; }
 .node-map-controls button:last-child { margin-inline-start: .12rem; }

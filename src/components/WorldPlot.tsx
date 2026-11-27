@@ -15,12 +15,40 @@ const graticule = [
   "M123,430H837 M37,344H923 M6,240H954 M37,136H923 M123,50H837",
 ].join(" ")
 
-const fullView = { x: 0, y: 0, zoom: 1 }
-const maxZoom = 8
-function boundedView(x: number, y: number, zoom: number) {
-  const maxX = WORLD_SIZE.width * (1 - 1 / zoom)
-  const maxY = WORLD_SIZE.height * (1 - 1 / zoom)
-  return { x: Math.max(0, Math.min(maxX, x)), y: Math.max(0, Math.min(maxY, y)), zoom }
+const aspect = WORLD_SIZE.width / WORLD_SIZE.height
+const mapInset = 8
+const fullWidth = WORLD_SIZE.width + 2 * mapInset
+const minFitWidth = 220
+const minZoomWidth = 100
+const zoomStep = 2
+type Camera = { x: number; y: number; width: number }
+
+function boundedView(x: number, y: number, width: number): Camera {
+  const insetY = mapInset / aspect
+  return {
+    x: Math.max(-mapInset, Math.min(WORLD_SIZE.width + mapInset - width, x)),
+    y: Math.max(-insetY, Math.min(WORLD_SIZE.height + insetY - width / aspect, y)),
+    width,
+  }
+}
+
+function getOverview(entries: [string, number][]) {
+  let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity
+  for (const [code] of entries) {
+    const point = getCountryPoint(code)
+    if (!point) continue
+    const [x, y] = point
+    left = Math.min(left, x)
+    right = Math.max(right, x)
+    top = Math.min(top, y)
+    bottom = Math.max(bottom, y)
+  }
+  if (left === Infinity) return boundedView(-mapInset, -mapInset / aspect, fullWidth)
+
+  // Keep some coastline around a lone marker and leave a gutter around a fleet.
+  const span = Math.max(right - left, (bottom - top) * aspect)
+  const width = Math.min(fullWidth, Math.max(minFitWidth, span * 1.2 + 48))
+  return boundedView((left + right - width) / 2, (top + bottom - width / aspect) / 2, width)
 }
 
 type Drag = { id: number; startX: number; startY: number; originX: number; originY: number; scale: number; moved: boolean }
@@ -34,25 +62,26 @@ type Props = {
 }
 
 export default function WorldPlot({ entries, selected, active, onHover, onPick, caption }: Props) {
-  const [view, setView] = useState(fullView)
+  const [camera, setCamera] = useState<Camera | null>(null)
   const drag = useRef<Drag | null>(null)
   const ignoreClick = useRef(false)
-  const width = WORLD_SIZE.width / view.zoom
-  const height = WORLD_SIZE.height / view.zoom
-  const zoomed = view.zoom > 1
+  const view = camera ?? getOverview(entries)
+  const { width } = view
+  const height = width / aspect
+  const canPan = camera !== null && width < fullWidth
 
-  function zoomTo(zoom: number) {
-    const center = selected && zoom > view.zoom ? getCountryPoint(selected) : undefined
+  function zoomTo(nextWidth: number) {
+    const center = selected && nextWidth < width ? getCountryPoint(selected) : undefined
     const cx = center?.[0] ?? view.x + width / 2
     const cy = center?.[1] ?? view.y + height / 2
-    setView(boundedView(cx - WORLD_SIZE.width / (2 * zoom), cy - WORLD_SIZE.height / (2 * zoom), zoom))
+    setCamera(boundedView(cx - nextWidth / 2, cy - nextWidth / aspect / 2, nextWidth))
   }
 
   function startDrag(e: PointerEvent<SVGSVGElement>) {
     if (!e.isPrimary || e.button !== 0) return
     ignoreClick.current = false
     const scale = e.currentTarget.getScreenCTM()?.a
-    if (!zoomed || !scale) return
+    if (!canPan || !scale) return
     drag.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, originX: view.x, originY: view.y, scale, moved: false }
   }
   function moveDrag(e: PointerEvent<SVGSVGElement>) {
@@ -66,13 +95,13 @@ export default function WorldPlot({ entries, selected, active, onHover, onPick, 
       e.currentTarget.setPointerCapture(e.pointerId)
       onHover(null)
     }
-    setView(boundedView(d.originX - dx / d.scale, d.originY - dy / d.scale, view.zoom))
+    setCamera(boundedView(d.originX - dx / d.scale, d.originY - dy / d.scale, width))
   }
   function endDrag(e: PointerEvent<SVGSVGElement>) {
     if (drag.current?.id === e.pointerId) drag.current = null
   }
   function panWithKeys(e: KeyboardEvent<SVGSVGElement>) {
-    if (!zoomed) return
+    if (!canPan) return
     const stepX = width / 5, stepY = height / 5
     const step: Record<string, [number, number]> = {
       ArrowLeft: [-stepX, 0], ArrowRight: [stepX, 0], ArrowUp: [0, -stepY], ArrowDown: [0, stepY],
@@ -80,19 +109,19 @@ export default function WorldPlot({ entries, selected, active, onHover, onPick, 
     if (!step[e.key]) return
     e.preventDefault()
     const [dx, dy] = step[e.key]
-    setView(boundedView(view.x + dx, view.y + dy, view.zoom))
+    setCamera(boundedView(view.x + dx, view.y + dy, width))
   }
   return <>
     <div className="node-map-sheet">
       <svg viewBox={[view.x, view.y, width, height].join(" ")} className="node-world"
-        role="group" aria-label={zoomed ? "节点分布，使用方向键平移" : "世界节点分布"} tabIndex={zoomed ? 0 : undefined}
-        data-zoomed={zoomed} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
+        role="group" aria-label={canPan ? "节点分布，使用方向键平移" : "节点分布"} tabIndex={canPan ? 0 : undefined}
+        data-draggable={canPan} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={endDrag}
         onPointerCancel={endDrag} onLostPointerCapture={endDrag}
         onPointerLeave={e => { if (!drag.current?.moved) endDrag(e); onHover(null) }}
         onClickCapture={e => { if (ignoreClick.current) { e.stopPropagation(); ignoreClick.current = false } }}
         onKeyDown={panWithKeys}>
-        <path className="node-world-grid" d={graticule} />
-        <g className="node-world-land" fillRule="evenodd">{land}</g>
+        <path className="node-world-grid" d={graticule} aria-hidden="true" />
+        <g className="node-world-land" fillRule="evenodd" aria-hidden="true">{land}</g>
         {entries.map(([code]) => <path key={code} d={areas.get(code)} fillRule="evenodd" className="node-world-coverage"
           data-active={code === active} data-selected={code === selected} aria-hidden="true"
           onMouseEnter={() => onHover(code)} onMouseLeave={() => onHover(null)} onClick={() => onPick(code)} />)}
@@ -101,7 +130,7 @@ export default function WorldPlot({ entries, selected, active, onHover, onPick, 
           if (!point) return null
           const name = regionLabel(code) + " · " + count + " 台节点"
           const inView = point[0] >= view.x && point[0] <= view.x + width && point[1] >= view.y && point[1] <= view.y + height
-          return <g key={code} transform={`translate(${point.join(" ")}) scale(${1 / view.zoom})`}
+          return <g key={code} transform={`translate(${point.join(" ")}) scale(${width / 800})`}
             data-map-marker={code} className="node-world-marker" data-active={code === active || code === selected}
             role="button" tabIndex={inView ? 0 : -1} aria-label={name} aria-pressed={code === selected}
             onMouseEnter={() => onHover(code)} onMouseLeave={() => onHover(null)}
@@ -120,9 +149,9 @@ export default function WorldPlot({ entries, selected, active, onHover, onPick, 
     <div className="node-map-footer">
       {caption}
       <div className="node-map-controls" role="group" aria-label="地图视图">
-        <button type="button" disabled={!zoomed} aria-label="缩小地图" title="缩小地图" onClick={() => zoomTo(view.zoom / 2)}><Minus /></button>
-        <button type="button" disabled={view.zoom >= maxZoom} aria-label="放大地图" title="放大地图" onClick={() => zoomTo(view.zoom * 2)}><Plus /></button>
-        <button type="button" disabled={!zoomed} aria-label="重置地图视图" title="回到全球视图" onClick={() => setView(fullView)}><LocateFixed /></button>
+        <button type="button" disabled={width >= fullWidth} aria-label="缩小地图" title="缩小地图" onClick={() => zoomTo(Math.min(fullWidth, width * zoomStep))}><Minus aria-hidden="true" /></button>
+        <button type="button" disabled={width <= minZoomWidth} aria-label="放大地图" title="放大地图" onClick={() => zoomTo(Math.max(minZoomWidth, width / zoomStep))}><Plus aria-hidden="true" /></button>
+        <button type="button" disabled={!camera} aria-label="恢复自动取景" title="恢复自动取景" onClick={() => setCamera(null)}><LocateFixed aria-hidden="true" /></button>
       </div>
     </div>
   </>
