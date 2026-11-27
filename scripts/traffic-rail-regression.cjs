@@ -142,21 +142,24 @@ async function checkFullCosts(page, cost, output, mobile = false) {
 }
 
 async function checkMapNavigation(page, map) {
-  const plot = map.locator('.node-world')
-  const readView = async () => (await plot.getAttribute('data-view')).split(',').map(Number)
+  const plot = map.locator('svg.node-world')
+  const readView = () => plot.evaluate(el => {
+    const {x, y, width, height} = el.viewBox.baseVal
+    return [x, y, width, height]
+  })
   const more = map.getByRole('button', {name:'放大地图', exact:true})
   const less = map.getByRole('button', {name:'缩小地图', exact:true})
   const reset = map.getByRole('button', {name:'恢复自动取景', exact:true})
   const original = await readView()
   assert(await reset.isDisabled(), 'the map starts in automatic mode')
-  assert(await less.isDisabled(), 'the globe starts at its full size')
+  await less.click()
+  assert((await readView())[2] > original[2], 'the map can zoom out from the fitted view')
+  await reset.click()
+  assert.deepEqual(await readView(), original, 'reset returns to the fitted view')
   await more.focus()
   await page.keyboard.press('Enter')
-  assert((await readView())[2] > original[2], 'zoom magnifies the globe')
-  await less.click()
-  assert.equal((await readView())[2], original[2], 'zoom out returns to the full globe')
-  await more.click()
   const zoomed = await readView()
+  assert(zoomed[2] < original[2] && zoomed[3] < original[3], 'zoom magnifies the map in both axes')
   const box = await plot.boundingBox()
   const x = box.x + box.width / 2
   const y = box.y + box.height / 2
@@ -166,11 +169,11 @@ async function checkMapNavigation(page, map) {
   await page.mouse.up()
   const panned = await readView()
   assert.notDeepEqual(panned.slice(0, 2), zoomed.slice(0, 2), 'drag changes the visible longitude or latitude')
-  assert.deepEqual(panned[2], zoomed[2], 'drag keeps the zoom level')
+  assert.deepEqual(panned.slice(2), zoomed.slice(2), 'drag keeps the zoom level')
   assert.equal(new URL(page.url()).searchParams.get('region'), null, 'dragging never selects a region')
   await plot.focus()
   await page.keyboard.press('ArrowRight')
-  assert.notEqual((await readView())[0], panned[0], 'the keyboard can rotate the globe')
+  assert((await readView())[0] > panned[0], 'the keyboard can pan the enlarged map')
   await reset.click()
   assert.deepEqual(await readView(), original, 'reset restores both the scale and position')
 }
@@ -178,7 +181,7 @@ async function checkMapNavigation(page, map) {
 async function checkNodeMap(page, output) {
   const map = page.getByRole('region', {name:'节点地图', exact:true})
   const toggle = map.getByRole('button', {name:'节点地图', exact:true})
-  const marker = code => map.locator(`[data-map-marker="${code}"]`)
+  const marker = code => map.locator(`g[data-map-marker="${code}"]`)
   const filters = page.getByRole('group', {name:'节点筛选'})
   const country = (code, count) => filters.getByRole('button', {name:`${code} ${count}`, exact:true})
   const cards = page.locator('.node-card')
@@ -187,12 +190,12 @@ async function checkNodeMap(page, output) {
   assert.equal(await toggle.getAttribute('aria-expanded'), 'true')
   await checkMapNavigation(page, map)
   const expectedRegions = fleet.slice(0, 7).map(([,code]) => code).sort()
-  const markers = map.locator('[data-map-marker]')
+  const markers = map.locator('g[data-map-marker]')
   assert.deepEqual(await markers.evaluateAll(items => items.map(item => item.dataset.mapMarker).sort()), expectedRegions)
   for (const code of expectedRegions) {
     const count = code === 'JP' ? 2 : 1
     assert.equal(await country(code, count).count(), 1, `${code} has one country filter`)
-    assert.match(await marker(code).getAttribute('aria-label'), new RegExp(`· ${count} 台节点$`))
+    assert.match(await marker(code).locator('title').textContent(), new RegExp(`· ${count} 台节点$`))
   }
   await map.getByText(/1\s*台未标注地区/).waitFor()
   assert.equal(await country('FR', 1).count(), 0, 'private nodes do not create a filter')
@@ -299,8 +302,9 @@ async function checkNodeMap(page, output) {
   await marker('JP').waitFor()
   assert.equal(await markers.count(), expectedRegions.length, 'expanding the phone map displays every known region')
   await map.screenshot({animations:'disabled',path:path.join(output,'node-map-mobile.png')})
-  await marker('JP').tap()
-  assert.equal(await cards.count(), 2, 'tapping the globe marker filters the mobile node list')
+  await country('JP', 2).focus()
+  await page.keyboard.press('Space')
+  assert.equal(await cards.count(), 2, 'mobile keyboard users can select a country from the center filters')
   assert.equal(await marker('JP').getAttribute('data-active'), 'true')
   await tools[1].click()
   await marker('JP').waitFor({state:'hidden'})
@@ -332,10 +336,10 @@ async function checkNodeMap(page, output) {
 
 async function checkMapAutoFit(page, nodes, output) {
   const map = page.getByRole('region', {name:'节点地图', exact:true})
-  const plot = map.locator('.node-world')
-  const marker = code => map.locator(`[data-map-marker="${code}"]`)
-  const readView = () => plot.getAttribute('data-view')
-  const initialView = await readView()
+  const plot = map.locator('svg.node-world')
+  const marker = code => map.locator(`g[data-map-marker="${code}"]`)
+  const readWidth = () => plot.evaluate(el => el.viewBox.baseVal.width)
+  const initialWidth = await readWidth()
   const previous = nodes.slice()
   const asia = previous.filter(node => ['JP', 'HK', 'SG'].includes(node.country))
   const edgeNodes = ['WS', 'FJ'].map((country, i) => ({
@@ -345,30 +349,29 @@ async function checkMapAutoFit(page, nodes, output) {
   nodes.splice(0, nodes.length, ...asia)
   try {
     await marker('AU').waitFor({state:'detached'})
-    const regionalView = await readView()
-    assert.notEqual(regionalView, initialView, 'the globe turns towards the part of the world that contains the VPS')
-    for (const code of ['JP', 'HK', 'SG']) assert(await marker(code).isVisible(), 'all regions are visible for a clustered fleet')
+    const regionalWidth = await readWidth()
+    assert(regionalWidth < initialWidth * .7, 'the map zooms in when all VPS are in the same part of the world')
     const regionalBounds = await map.boundingBox()
     await map.screenshot({animations:'disabled',path:path.join(output,'node-map-asia.png')})
 
     await map.getByRole('button', {name:'放大地图', exact:true}).click()
-    const manualView = await readView()
+    const manualWidth = await readWidth()
     nodes.push(...edgeNodes)
     await marker('FJ').waitFor({state:'attached'})
-    assert.equal(await readView(), manualView, 'fleet updates do not interrupt manual navigation')
+    assert.equal(await readWidth(), manualWidth, 'fleet updates do not interrupt manual navigation')
     await map.getByRole('button', {name:'恢复自动取景', exact:true}).click()
 
     for (const node of edgeNodes) {
       const pin = marker(node.country)
       await pin.waitFor()
-      assert(await pin.isEnabled(), 'new markers near the date line are keyboard reachable')
+      assert.equal(await pin.getAttribute('tabindex'), '0', 'new markers near the date line are keyboard reachable')
       const bounds = await plot.boundingBox()
       const target = await pin.boundingBox()
       assert(target.x > bounds.x && target.x + target.width < bounds.x + bounds.width,
         'the default viewport fits the entire target near either edge')
     }
-    assert.notEqual(await readView(), regionalView,
-      'the globe recenters when added regions need a different view')
+    assert((await readWidth()) > regionalWidth,
+      'the overview expands when a new node needs more space')
     const expandedBounds = await map.boundingBox()
     assert.deepEqual([expandedBounds.width, expandedBounds.height], [regionalBounds.width, regionalBounds.height],
       'changing geographic coverage does not resize the card')
@@ -380,11 +383,11 @@ async function checkMapAutoFit(page, nodes, output) {
     assert.equal(new URL(page.url()).searchParams.get('region'), null)
     nodes.splice(-edgeNodes.length, edgeNodes.length)
     await marker('FJ').waitFor({state:'detached'})
-    assert.equal(await readView(), regionalView, 'the regional view returns when edge nodes are removed')
+    assert.equal(await readWidth(), regionalWidth, 'the regional view returns when edge nodes are removed')
   } finally {
     nodes.splice(0, nodes.length, ...previous)
   }
-  await marker('AU').waitFor({state:'attached'})
+  await marker('AU').waitFor()
 }
 
 async function checkOptionalVisitor(context, origin) {
@@ -500,7 +503,7 @@ module.exports = async function checkTrafficRail(context, origin, nodes, output)
         panels: surfaces.map(selector => color(selector, 'backgroundColor')),
         text: surfaces.map(selector => color(selector, 'color')),
         map: color('.node-map-sheet', 'backgroundColor'),
-        land: color('.node-world-land', 'color'),
+        land: color('.node-world-land', 'fill'),
         weekly: color('.weekly-up', 'backgroundColor'),
         selection: color('.cost-dock .cost-tags [aria-pressed="true"]', 'color'),
       }

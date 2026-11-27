@@ -70,7 +70,7 @@ async function checkWeekly(context, origin, output) {
     assert((await dialog.innerText()).includes(data.days[0]))
     await dialog.screenshot({animations:'disabled',path:path.join(output,'weekly-day-top10.png')})
     await closeDay(0)
-    await map.locator('[data-map-marker="JP"]').click()
+    await map.locator('g[data-map-marker="JP"]').click()
     await chart.getByText('日本', {exact:true}).waitFor()
     assert.match(await label(0), /无记录/)
     assert.match(await label(1), /上传\s*0\s*B/)
